@@ -1,0 +1,17 @@
+@import "tailwindcss";
+@import url("https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap");
+
+@theme {
+    --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
