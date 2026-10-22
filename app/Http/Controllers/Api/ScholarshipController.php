@@ -52,7 +52,7 @@ class ScholarshipController extends Controller
         $perPage = (int) $request->input('per_page', 25);
         if (!in_array($perPage, [10, 25, 50, 100], true)) $perPage = 25;
 
-        $page = $query->paginate($perPage);
+        $page = $query->with('installments')->paginate($perPage);
 
         $flagKeys = DuplicateFlag::whereIn('review_status', ['pending','escalated'])
             ->get()

@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchApplications, deleteApplication } from "../services/scholarships";
+import {
+    fetchApplications,
+    deleteApplication,
+    promoteApplication,
+} from "../services/scholarships";
 import StatusBadge from "../components/StatusBadge";
 import ApplicationModal from "../components/ApplicationModal";
 import Pagination from "../components/Pagination";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
-import { promoteApplication } from "../services/scholarships";
 
 export default function Applications() {
     const toast = useToast();
@@ -37,20 +40,6 @@ export default function Applications() {
         keepPreviousData: true,
     });
 
-    // inside component:
-    const promote = useMutation({
-        mutationFn: promoteApplication,
-        onSuccess: (res) => {
-            qc.invalidateQueries({ queryKey: ["applications"] });
-            qc.invalidateQueries({ queryKey: ["scholarships"] });
-            qc.invalidateQueries({ queryKey: ["dashboard"] });
-            toast.success(`Promoted to scholarship #${res.scholarship.id}`);
-            window.location.href = `/register?edit=${res.scholarship.id}`;
-        },
-        onError: (e) =>
-            toast.error(e?.response?.data?.message ?? "Promote failed"),
-    });
-
     const del = useMutation({
         mutationFn: deleteApplication,
         onSuccess: () => {
@@ -58,6 +47,18 @@ export default function Applications() {
             toast.success("Application deleted");
         },
         onError: () => toast.error("Delete failed"),
+    });
+
+    const promote = useMutation({
+        mutationFn: promoteApplication,
+        onSuccess: (res) => {
+            qc.invalidateQueries({ queryKey: ["applications"] });
+            qc.invalidateQueries({ queryKey: ["scholarships"] });
+            qc.invalidateQueries({ queryKey: ["dashboard"] });
+            toast.success(`Promoted to scholarship #${res.scholarship.id}`);
+        },
+        onError: (e) =>
+            toast.error(e?.response?.data?.message ?? "Promote failed"),
     });
 
     return (
@@ -123,6 +124,17 @@ export default function Applications() {
                         <option value="eligible">Eligible</option>
                         <option value="ineligible">Ineligible</option>
                     </select>
+                    <button
+                        className="border border-slate-300 px-3 py-2 rounded-lg text-sm hover:bg-slate-100"
+                        onClick={() => {
+                            setSearch("");
+                            setStatus("");
+                            setEligibility("");
+                            setPage(1);
+                        }}
+                    >
+                        Clear
+                    </button>
                 </div>
 
                 <div className="overflow-auto">
@@ -170,45 +182,71 @@ export default function Applications() {
                                     </td>
                                 </tr>
                             )}
-                            {data?.data.map((a) => (
-                                <tr key={a.id} className="border-t">
+                            {data?.data.map((app) => (
+                                <tr key={app.id} className="border-t">
                                     <td className="px-4 py-2 font-mono">
-                                        {a.student_id}
+                                        {app.student_id}
                                     </td>
                                     <td className="px-4 py-2">
-                                        {a.student_name}
+                                        {app.student_name}
                                     </td>
                                     <td className="px-4 py-2 font-mono text-xs">
-                                        {a.cnic}
+                                        {app.cnic ?? "—"}
                                     </td>
-                                    <td className="px-4 py-2">{a.scheme}</td>
+                                    <td className="px-4 py-2">{app.scheme}</td>
                                     <td className="px-4 py-2">
-                                        {a.academic_year}
+                                        {app.academic_year}
                                     </td>
                                     <td className="px-4 py-2">
                                         <StatusBadge
                                             kind="eligibility"
-                                            value={a.eligibility}
+                                            value={app.eligibility}
                                         />
                                     </td>
                                     <td className="px-4 py-2">
                                         <StatusBadge
                                             kind="application"
-                                            value={a.status}
+                                            value={app.status}
                                         />
                                     </td>
                                     <td
                                         className="px-4 py-2 text-xs text-slate-500 max-w-[240px] truncate"
-                                        title={a.rejection_reason ?? ""}
+                                        title={app.rejection_reason ?? ""}
                                     >
-                                        {a.rejection_reason ?? "—"}
+                                        {app.rejection_reason ?? "—"}
                                     </td>
                                     <td className="px-4 py-2">
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 items-center flex-wrap">
+                                            {app.status === "approved" &&
+                                                !app.scholarship_id && (
+                                                    <button
+                                                        className="text-emerald-700 text-xs font-semibold hover:underline"
+                                                        onClick={async () => {
+                                                            const ok =
+                                                                await confirm({
+                                                                    title: "Promote to scholarship?",
+                                                                    message: `Create a scholarship record for ${app.student_name} (${app.scheme}, ${app.academic_year})?`,
+                                                                    confirmLabel:
+                                                                        "Promote",
+                                                                });
+                                                            if (ok)
+                                                                promote.mutate(
+                                                                    app.id,
+                                                                );
+                                                        }}
+                                                    >
+                                                        Promote →
+                                                    </button>
+                                                )}
+                                            {app.scholarship_id && (
+                                                <span className="text-[11px] text-slate-400 font-mono">
+                                                    → #{app.scholarship_id}
+                                                </span>
+                                            )}
                                             <button
                                                 className="text-blue-700 text-xs font-semibold hover:underline"
                                                 onClick={() => {
-                                                    setEditing(a.id);
+                                                    setEditing(app.id);
                                                     setOpen(true);
                                                 }}
                                             >
@@ -224,7 +262,7 @@ export default function Applications() {
                                                         confirmLabel: "Delete",
                                                         danger: true,
                                                     });
-                                                    if (ok) del.mutate(a.id);
+                                                    if (ok) del.mutate(app.id);
                                                 }}
                                             >
                                                 Delete
@@ -246,27 +284,7 @@ export default function Applications() {
                     }}
                 />
             </div>
-            // inside the Actions cell, add before Edit:
-            {a.status === "approved" && !a.scholarship_id && (
-                <button
-                    onClick={async () => {
-                        const ok = await confirm({
-                            title: "Promote to scholarship?",
-                            message: `Create a scholarship record for ${a.student_name} (${a.scheme}, ${a.academic_year})? You'll fill in the amount and cheque next.`,
-                            confirmLabel: "Promote",
-                        });
-                        if (ok) promote.mutate(a.id);
-                    }}
-                    className="text-emerald-700 text-xs font-semibold hover:underline"
-                >
-                    Promote →
-                </button>
-            )}
-            {a.scholarship_id && (
-                <span className="text-[11px] text-slate-400 font-mono">
-                    → #{a.scholarship_id}
-                </span>
-            )}
+
             {open && (
                 <ApplicationModal
                     applicationId={editing}

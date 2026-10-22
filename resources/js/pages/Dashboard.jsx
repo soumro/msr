@@ -79,6 +79,19 @@ export default function Dashboard() {
                     ? "border-amber-600"
                     : "border-emerald-600",
         },
+
+        {
+            label: "Installments Paid",
+            value: `${data.installment_paid_count ?? 0}/${data.installment_count ?? 0}`,
+            sub: "Received / Total",
+            accent: "border-blue-600",
+        },
+        {
+            label: "Pending Inst.",
+            value: fmt(data.installments_pending ?? 0),
+            sub: "Not yet received",
+            accent: "border-amber-600",
+        },
     ];
 
     return (

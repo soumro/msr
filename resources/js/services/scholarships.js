@@ -128,3 +128,9 @@ export const promoteApplication = (id) =>
 
 export const bulkUpdateScholarships = (ids, patch) =>
     api.patch("/scholarships/bulk", { ids, ...patch }).then((r) => r.data);
+
+// Installments
+export const replaceAllInstallments = (scholarshipId, installments) =>
+    api
+        .put(`/scholarships/${scholarshipId}/installments`, { installments })
+        .then((r) => r.data);

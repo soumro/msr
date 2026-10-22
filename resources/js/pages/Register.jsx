@@ -124,6 +124,7 @@ export default function Register() {
             "Cheque No.",
             "Received Date",
             "Payment",
+            "Installments",
             "Renewal",
         ];
         const rows = (data?.data ?? []).map((s) => [
@@ -389,7 +390,7 @@ export default function Register() {
                             {isLoading && (
                                 <tr>
                                     <td
-                                        colSpan={14}
+                                        colSpan={15}
                                         className="p-6 text-center text-slate-500"
                                     >
                                         Loading…
@@ -399,7 +400,7 @@ export default function Register() {
                             {!isLoading && data?.data.length === 0 && (
                                 <tr>
                                     <td
-                                        colSpan={14}
+                                        colSpan={15}
                                         className="p-6 text-center text-slate-500"
                                     >
                                         No records match the filters.
@@ -482,6 +483,34 @@ export default function Register() {
                                                 kind="renewal"
                                                 value={s.renewal_status}
                                             />
+                                        </td>
+                                        <td className="px-4 py-2 text-xs">
+                                            {s.installments?.length > 0 ? (
+                                                <span className="inline-flex items-center gap-1">
+                                                    <span className="font-mono font-semibold text-slate-700">
+                                                        {
+                                                            s.installments.filter(
+                                                                (i) =>
+                                                                    i.status ===
+                                                                    "received",
+                                                            ).length
+                                                        }
+                                                    </span>
+                                                    <span className="text-slate-400">
+                                                        /
+                                                    </span>
+                                                    <span className="font-mono text-slate-500">
+                                                        {s.installments.length}
+                                                    </span>
+                                                    <span className="text-slate-400 text-[10px]">
+                                                        paid
+                                                    </span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-slate-400">
+                                                    —
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-4 py-2">
                                             <div className="flex gap-2">

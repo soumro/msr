@@ -36,6 +36,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('scholarships', [ScholarshipController::class, 'index']);
     Route::get('scholarships/{scholarship}', [ScholarshipController::class, 'show']);
+    // Installments (nested under scholarship)
+    Route::get('scholarships/{scholarship}/installments', [\App\Http\Controllers\Api\InstallmentController::class, 'index']);
 
     Route::get('duplicates', [DuplicateCheckController::class, 'index']);
     Route::get('cheque-duplicates', [DuplicateCheckController::class, 'chequeDuplicates']);
@@ -79,6 +81,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('applications/{application}/promote', [ApplicationController::class, 'promote']);
 
         Route::patch('scholarships/bulk', [ScholarshipController::class, 'bulkUpdate']);
+
+        Route::post('scholarships/{scholarship}/installments', [\App\Http\Controllers\Api\InstallmentController::class, 'store']);
+        Route::put('scholarships/{scholarship}/installments/{installment}', [\App\Http\Controllers\Api\InstallmentController::class, 'update']);
+        Route::delete('scholarships/{scholarship}/installments/{installment}', [\App\Http\Controllers\Api\InstallmentController::class, 'destroy']);
+        Route::put('scholarships/{scholarship}/installments', [\App\Http\Controllers\Api\InstallmentController::class, 'replaceAll']);
 
     });
 

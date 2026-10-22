@@ -79,6 +79,18 @@ class BulkImportController extends Controller
                 if ($exists) { $skipped++; continue; }
 
                 Scholarship::create($row);
+                $scholarship = Scholarship::create($row);
+
+                $scholarship->installments()->create([
+                    'installment_no' => 1,
+                    'amount'         => $row['approved_amount'],
+                    'cheque_no'      => $row['cheque_no'],
+                    'received_date'  => $row['received_date'],
+                    'status'         => $row['cheque_no'] && $row['received_date'] ? 'received'
+                                    : ($row['cheque_no'] ? 'received' : 'pending'),
+                ]);
+                $scholarship->syncPaymentStatus();
+
                 $imported++;
             }
 
@@ -112,7 +124,7 @@ class BulkImportController extends Controller
     public function history()
     {
         return response()->json([
-            'data' => ImportBatch::orderByDesc('id')->limit(20)->get(),
+            'data' => \App\Models\ImportBatch::orderByDesc('id')->limit(20)->get(),
         ]);
     }
 
@@ -189,6 +201,16 @@ class BulkImportController extends Controller
                     'renewal_status'  => $row['renewal_status'],
                     'notes'           => $row['notes'],
                 ]);
+
+                $scholarship = Scholarship::create([...]);
+                $scholarship->installments()->create([
+                    'installment_no' => 1,
+                    'amount'         => $row['approved_amount'],
+                    'cheque_no'      => $row['cheque_no'],
+                    'received_date'  => $row['received_date'],
+                    'status'         => ($row['cheque_no'] && $row['received_date']) ? 'received' : 'pending',
+                ]);
+                $scholarship->syncPaymentStatus();
                 $imported++;
             }
 

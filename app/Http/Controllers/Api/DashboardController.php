@@ -48,6 +48,15 @@ class DashboardController extends Controller
         $freshAmount   = (float) Scholarship::where('category', 'fresh')->sum('approved_amount');
         $renewalAmount = (float) Scholarship::where('category', 'renewal')->sum('approved_amount');
 
+        $installmentsReceived = (float) \App\Models\Installment::where('status', 'received')->sum('amount');
+        $installmentsPending  = (float) \App\Models\Installment::where('status', 'pending')->sum('amount');
+        $installmentsOverdue  = \App\Models\Installment::where('status', 'pending')
+            ->whereNotNull('received_date')
+            ->whereDate('received_date', '<', now())
+            ->count();
+        $installmentCount     = \App\Models\Installment::count();
+        $installmentPaidCount = \App\Models\Installment::where('status', 'received')->count();
+
         return response()->json([
             'total_approved'     => (float) Scholarship::sum('approved_amount'),
             'total_disbursed'    => (float) Scholarship::where('payment_status','paid')->sum('approved_amount'),
@@ -64,6 +73,13 @@ class DashboardController extends Controller
             'by_scheme'          => $byScheme,
             'by_donor'           => $byDonor,
             'renewals'           => $renewals,
+
+            'installments_received'  => $installmentsReceived,
+            'installments_pending'   => $installmentsPending,
+            'installments_overdue'   => $installmentsOverdue,
+            'installment_count'      => $installmentCount,
+            'installment_paid_count' => $installmentPaidCount,
+
         ]);
     }
 }

@@ -3,8 +3,10 @@ import {
     fetchScholarship,
     createScholarship,
     updateScholarship,
+    replaceAllInstallments,
 } from "../services/scholarships";
 import LookupSelect from "./LookupSelect";
+import InstallmentSection from "./InstallmentSection";
 import { useToast } from "../context/ToastContext";
 
 const empty = {
@@ -15,11 +17,11 @@ const empty = {
     category: "fresh",
     academic_year: "",
     donor: "",
+    funding_group: "",
     approved_amount: 0,
-    cheque_no: "",
-    received_date: "",
     payment_status: "pending",
     renewal_status: "not_due",
+    notes: "",
 };
 
 function formatCnic(v) {
@@ -32,14 +34,30 @@ function formatCnic(v) {
 export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
     const toast = useToast();
     const [form, setForm] = useState(empty);
+    const [installments, setInstallments] = useState([]);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        if (scholarshipId)
+        if (scholarshipId) {
             fetchScholarship(scholarshipId)
-                .then(setForm)
+                .then((r) => {
+                    setForm(r);
+                    setInstallments(
+                        (r.installments ?? []).map((i) => ({
+                            installment_no: i.installment_no,
+                            amount: Number(i.amount),
+                            cheque_no: i.cheque_no ?? "",
+                            received_date: i.received_date ?? "",
+                            status: i.status,
+                            notes: i.notes ?? "",
+                        })),
+                    );
+                })
                 .catch(() => {});
-        else setForm(empty);
+        } else {
+            setForm(empty);
+            setInstallments([]);
+        }
     }, [scholarshipId]);
 
     useEffect(() => {
@@ -59,18 +77,30 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
         e.preventDefault();
         setSaving(true);
         try {
-            const payload = {
-                ...form,
-                cheque_no: form.cheque_no?.trim() || null,
-                received_date: form.received_date?.trim() || null,
-            };
+            let scholarship;
             if (scholarshipId) {
-                await updateScholarship(scholarshipId, payload);
-                toast.success("Record updated");
+                scholarship = await updateScholarship(scholarshipId, form);
             } else {
-                await createScholarship(payload);
-                toast.success("Record added");
+                scholarship = await createScholarship(form);
             }
+
+            // Save installments (replace all)
+            const rows = installments
+                .filter((r) => Number(r.amount) > 0)
+                .map((r, i) => ({
+                    installment_no: i + 1,
+                    amount: Number(r.amount),
+                    cheque_no: r.cheque_no || null,
+                    received_date: r.received_date || null,
+                    status: r.status,
+                    notes: r.notes || null,
+                }));
+
+            if (rows.length > 0 || scholarshipId) {
+                await replaceAllInstallments(scholarship.id, rows);
+            }
+
+            toast.success(scholarshipId ? "Record updated" : "Record added");
             onSaved();
         } catch (err) {
             const msg =
@@ -94,7 +124,7 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                 id="scholarship-form"
                 onSubmit={submit}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-xl shadow-xl w-full max-w-2xl mt-10"
+                className="bg-white rounded-xl shadow-xl w-full max-w-3xl mt-10"
             >
                 <div className="px-5 py-3 border-b flex justify-between items-center">
                     <h3 className="font-semibold">
@@ -124,18 +154,17 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                     <F label="Student Name">
                         <input
                             className="inp"
-                            value={form.student_name}
+                            value={form.student_name ?? ""}
                             onChange={(e) =>
                                 set("student_name", e.target.value)
                             }
                         />
                     </F>
-                    <F label="CNIC" required>
+                    <F label="CNIC">
                         <input
                             className="inp font-mono"
-                            required
                             placeholder="35202-1234567-1"
-                            value={form.cnic}
+                            value={form.cnic ?? ""}
                             onChange={(e) =>
                                 set("cnic", formatCnic(e.target.value))
                             }
@@ -149,12 +178,7 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                             onChange={(v) => set("scheme", v)}
                         />
                     </F>
-
-                    <F
-                        label="Category"
-                        required
-                        help="Fresh = first-time applicant. Renewal = existing beneficiary continuing."
-                    >
+                    <F label="Category" required>
                         <div className="flex gap-2">
                             {["fresh", "renewal"].map((c) => (
                                 <label
@@ -167,8 +191,6 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                                 >
                                     <input
                                         type="radio"
-                                        name="category"
-                                        value={c}
                                         checked={form.category === c}
                                         onChange={() => set("category", c)}
                                         className="accent-emerald-700"
@@ -178,7 +200,6 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                             ))}
                         </div>
                     </F>
-
                     <F label="Academic Year" required>
                         <LookupSelect
                             type="academic_year"
@@ -195,8 +216,18 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                             onChange={(v) => set("donor", v)}
                         />
                     </F>
-
-                    <F label="Approved Amount (PKR)" required>
+                    <F label="Funding Group">
+                        <LookupSelect
+                            type="funding_group"
+                            value={form.funding_group ?? ""}
+                            onChange={(v) => set("funding_group", v)}
+                        />
+                    </F>
+                    <F
+                        label="Approved Amount (PKR)"
+                        required
+                        help="Total sanctioned for this scholarship across all installments."
+                    >
                         <input
                             type="number"
                             min={0}
@@ -208,43 +239,6 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                                 set("approved_amount", Number(e.target.value))
                             }
                         />
-                    </F>
-                    <F label="Cheque No.">
-                        <input
-                            className="inp font-mono"
-                            placeholder="e.g. PMLTC-F-001"
-                            value={form.cheque_no ?? ""}
-                            onChange={(e) => set("cheque_no", e.target.value)}
-                        />
-                    </F>
-                    <F
-                        label="Received Date"
-                        help="Setting a date auto-marks the payment as paid."
-                    >
-                        <input
-                            type="date"
-                            className="inp"
-                            value={form.received_date ?? ""}
-                            onChange={(e) =>
-                                set("received_date", e.target.value)
-                            }
-                        />
-                    </F>
-
-                    <F label="Payment Status" required>
-                        <select
-                            className="inp"
-                            value={form.payment_status}
-                            onChange={(e) =>
-                                set("payment_status", e.target.value)
-                            }
-                        >
-                            {["pending", "partial", "paid", "failed"].map(
-                                (s) => (
-                                    <option key={s}>{s}</option>
-                                ),
-                            )}
-                        </select>
                     </F>
                     <F label="Renewal Status" required>
                         <select
@@ -265,6 +259,14 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                             ))}
                         </select>
                     </F>
+                </div>
+
+                <div className="px-5 pb-5">
+                    <InstallmentSection
+                        installments={installments}
+                        approvedAmount={form.approved_amount}
+                        onChange={setInstallments}
+                    />
                 </div>
 
                 <div className="px-5 py-3 border-t flex justify-between items-center bg-slate-50 rounded-b-xl">

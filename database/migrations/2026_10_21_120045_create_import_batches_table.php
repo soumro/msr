@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('import_batches', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->nullable()->constrained();
+            $table->foreignId('user_id')->nullable();
             $table->string('filename');
             $table->integer('total_rows')->default(0);
             $table->integer('imported')->default(0);
