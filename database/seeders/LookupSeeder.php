@@ -24,9 +24,11 @@ class LookupSeeder extends Seeder
             ],
             'funding_group' => [
                 'MUET SZAB', 'External Donor', 'MUET Jamshoro', 'Other'
-            ]
+            ],
 
+            'semester' => ['Fall', 'Spring'],
         ];
+
 
         foreach ($seed as $type => $names) {
             foreach ($names as $i => $name) {

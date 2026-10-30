@@ -17,7 +17,7 @@ export function AuthProvider({ children }) {
     const can = (action) => {
         if (!user) return false;
         const map = {
-            edit: ["admin", "committee"],
+            edit: ["admin", "committee", "auditor"],
             finance: ["admin", "finance"],
             manage: ["admin"],
         };

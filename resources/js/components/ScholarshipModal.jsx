@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
     fetchScholarship,
     createScholarship,
@@ -18,6 +19,7 @@ const empty = {
     academic_year: "",
     donor: "",
     funding_group: "",
+    department: "",
     approved_amount: 0,
     payment_status: "pending",
     renewal_status: "not_due",
@@ -33,6 +35,7 @@ function formatCnic(v) {
 
 export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
     const toast = useToast();
+    const qc = useQueryClient();
     const [form, setForm] = useState(empty);
     const [installments, setInstallments] = useState([]);
     const [saving, setSaving] = useState(false);
@@ -47,18 +50,23 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                             installment_no: i.installment_no,
                             amount: Number(i.amount),
                             cheque_no: i.cheque_no ?? "",
-                            received_date: i.received_date ?? "",
+                            received_date: i.received_date
+                                ? String(i.received_date).substring(0, 10)
+                                : "",
                             status: i.status,
                             notes: i.notes ?? "",
                         })),
                     );
                 })
-                .catch(() => {});
+                .catch((err) => {
+                    console.error("Failed to load scholarship:", err);
+                    toast.error("Could not load record");
+                });
         } else {
             setForm(empty);
             setInstallments([]);
         }
-    }, [scholarshipId]);
+    }, [scholarshipId, toast]);
 
     useEffect(() => {
         const handler = (e) => {
@@ -77,6 +85,7 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
         e.preventDefault();
         setSaving(true);
         try {
+            // 1. Save the main scholarship
             let scholarship;
             if (scholarshipId) {
                 scholarship = await updateScholarship(scholarshipId, form);
@@ -84,7 +93,7 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                 scholarship = await createScholarship(form);
             }
 
-            // Save installments (replace all)
+            // 2. Save the installments (replace all)
             const rows = installments
                 .filter((r) => Number(r.amount) > 0)
                 .map((r, i) => ({
@@ -99,8 +108,16 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
             if (rows.length > 0 || scholarshipId) {
                 await replaceAllInstallments(scholarship.id, rows);
             }
-
+            console.log("Sending installments:", rows);
             toast.success(scholarshipId ? "Record updated" : "Record added");
+
+            // Invalidate queries so tables refresh
+            qc.invalidateQueries({ queryKey: ["scholarships"] });
+            qc.invalidateQueries({ queryKey: ["dashboard"] });
+            qc.invalidateQueries({ queryKey: ["report-grouped"] });
+            qc.invalidateQueries({ queryKey: ["report-summary"] });
+            qc.invalidateQueries({ queryKey: ["report-student"] });
+
             onSaved();
         } catch (err) {
             const msg =
@@ -110,6 +127,7 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                     .join("\n") ??
                 "Save failed.";
             toast.error(msg);
+            console.error("Save failed:", err?.response?.data ?? err);
         } finally {
             setSaving(false);
         }
@@ -185,7 +203,7 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                                     key={c}
                                     className={`flex-1 border rounded-lg px-3 py-2 text-sm cursor-pointer flex items-center gap-2 transition-colors ${
                                         form.category === c
-                                            ? "border-emerald-700 bg-emerald-50 text-emerald-900 font-semibold"
+                                            ? "border-purple-700 bg-purple-50 text-purple-900 font-semibold"
                                             : "border-slate-300 hover:bg-slate-50"
                                     }`}
                                 >
@@ -193,7 +211,7 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                                         type="radio"
                                         checked={form.category === c}
                                         onChange={() => set("category", c)}
-                                        className="accent-emerald-700"
+                                        className="accent-purple-700"
                                     />
                                     {c === "fresh" ? "Fresh" : "Renewal"}
                                 </label>
@@ -224,14 +242,21 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                         />
                     </F>
                     <F
-                        label="Approved Amount (PKR)"
-                        required
-                        help="Total sanctioned for this scholarship across all installments."
+                        label="Department"
+                        help="Used for department-wise reports"
                     >
+                        <input
+                            className="inp"
+                            value={form.department ?? ""}
+                            onChange={(e) => set("department", e.target.value)}
+                            placeholder="e.g. Computer Science"
+                        />
+                    </F>
+                    <F label="Approved Amount (PKR)" required>
                         <input
                             type="number"
                             min={0}
-                            step={1000}
+                            step="any"
                             className="inp"
                             required
                             value={form.approved_amount}
@@ -261,11 +286,18 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                     </F>
                 </div>
 
+                {/* ── Installments section — MUST be here ── */}
                 <div className="px-5 pb-5">
                     <InstallmentSection
                         installments={installments}
                         approvedAmount={form.approved_amount}
-                        onChange={setInstallments}
+                        onChange={(updater) => {
+                            setInstallments((prev) =>
+                                typeof updater === "function"
+                                    ? updater(prev)
+                                    : updater,
+                            );
+                        }}
                     />
                 </div>
 
@@ -292,7 +324,7 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                         <button
                             type="submit"
                             disabled={saving}
-                            className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-60"
+                            className="bg-purple-700 hover:bg-purple-800 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-60"
                         >
                             {saving ? "Saving…" : "Save"}
                         </button>
@@ -302,7 +334,7 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
 
             <style>{`
         .inp{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:14px}
-        .inp:focus{outline:none;border-color:#0b5d3b;box-shadow:0 0 0 3px rgba(11,93,59,.12)}
+        .inp:focus{outline:none;border-color:#6d28d9;box-shadow:0 0 0 3px rgba(109,40,217,.12)}
       `}</style>
         </div>
     );

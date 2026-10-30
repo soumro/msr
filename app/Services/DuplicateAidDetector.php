@@ -1,47 +1,65 @@
 <?php
+
 namespace App\Services;
 
 use App\Models\Scholarship;
 use App\Models\DuplicateFlag;
+use Illuminate\Support\Facades\Log;
 
 class DuplicateAidDetector
 {
     public function rebuild(): void
     {
-        $groups = Scholarship::all()->groupBy(fn ($r) => $this->personKey($r) . '|' . $r->academic_year);
+        try {
+            $all = Scholarship::all();
 
-        $activeKeys = [];
-        foreach ($groups as $key => $rows) {
-            $schemes = $rows->pluck('scheme')->unique()->values()->all();
-            if (count($schemes) < 2) continue;
+            // Group by (student_id + academic_year) — roll-no-only uniqueness
+            $groups = $all->groupBy(function ($r) {
+                $sid = trim((string) ($r->student_id ?? ''));
+                $sid = $sid !== '' ? $sid : 'UNK_' . $r->id;
+                return $sid . '|' . ($r->academic_year ?? '');
+            });
 
-            [$personKey, $year] = explode('|', $key, 2);
-            $activeKeys[] = $personKey;
+            // Build the flags array (do NOT delete until we know we can create)
+            $toInsert = [];
+            foreach ($groups as $key => $rows) {
+                $schemes = $rows->pluck('scheme')->unique()->filter(fn ($s) => $s !== null && $s !== '')->values()->all();
+                if (count($schemes) < 2) continue;
 
-            $existing = DuplicateFlag::where('person_key', $personKey)
-                ->where('academic_year', $year)->first();
+                [$studentId, $year] = explode('|', $key, 2);
+                $personKey = 'SID:' . $studentId;
 
-            DuplicateFlag::updateOrCreate(
-                ['person_key' => $personKey, 'academic_year' => $year],
-                [
+                $existing = DuplicateFlag::where('person_key', $personKey)
+                    ->where('academic_year', $year)
+                    ->first();
+
+                $toInsert[] = [
+                    'person_key'     => $personKey,
+                    'academic_year'  => $year,
                     'schemes'        => $schemes,
-                    'total_amount'   => $rows->sum('approved_amount'),
+                    'total_amount'   => (float) $rows->sum('approved_amount'),
                     'review_status'  => $existing->review_status ?? 'pending',
                     'committee_note' => $existing->committee_note ?? null,
-                ]
-            );
-        }
+                    'reviewed_at'    => $existing->reviewed_at ?? null,
+                ];
+            }
 
-        if ($activeKeys) {
-            DuplicateFlag::whereNotIn('person_key', $activeKeys)->delete();
-        } else {
+            // Wipe all old flags only after we've prepared the replacements
             DuplicateFlag::query()->delete();
-        }
-    }
 
-    private function personKey($row): string
-    {
-        $d = preg_replace('/\D/', '', (string) $row->cnic);
-        return $d !== '' ? 'C:' . $d : 'S:' . strtoupper(trim($row->student_id));
+            foreach ($toInsert as $row) {
+                DuplicateFlag::create($row);
+            }
+
+            Log::info('Duplicate rebuild complete', [
+                'groups_total'   => $groups->count(),
+                'flags_created'  => count($toInsert),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Duplicate rebuild failed: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
     }
 }

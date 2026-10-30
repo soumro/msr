@@ -1,45 +1,52 @@
-import { useState } from "react";
-
 const fmt = (n) => new Intl.NumberFormat("en-PK").format(Number(n) || 0);
 
 export default function InstallmentSection({
-    installments,
+    installments = [],
     onChange,
     approvedAmount,
 }) {
     const addRow = () => {
-        const next = [...installments];
-        const nextNo =
-            next.reduce((m, r) => Math.max(m, r.installment_no || 0), 0) + 1;
-        const suggested = Math.max(
-            0,
-            (Number(approvedAmount) || 0) -
-                next.reduce((s, r) => s + Number(r.amount || 0), 0),
-        );
-        next.push({
-            installment_no: nextNo,
-            amount: suggested || 0,
-            cheque_no: "",
-            received_date: "",
-            status: "pending",
-            notes: "",
+        onChange((prev) => {
+            const nextNo =
+                prev.reduce(
+                    (m, r) => Math.max(m, Number(r.installment_no) || 0),
+                    0,
+                ) + 1;
+            const scheduled = prev.reduce(
+                (s, r) => s + Number(r.amount || 0),
+                0,
+            );
+            const suggested = Math.max(
+                0,
+                (Number(approvedAmount) || 0) - scheduled,
+            );
+            return [
+                ...prev,
+                {
+                    installment_no: nextNo,
+                    amount: suggested || 0,
+                    cheque_no: "",
+                    received_date: "",
+                    status: "pending",
+                    notes: "",
+                },
+            ];
         });
-        onChange(next);
     };
 
     const updateRow = (idx, key, value) => {
-        const next = installments.map((r, i) =>
-            i === idx ? { ...r, [key]: value } : r,
+        onChange((prev) =>
+            prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)),
         );
-        onChange(next);
     };
 
     const removeRow = (idx) => {
         if (!confirm("Remove this installment?")) return;
-        const next = installments
-            .filter((_, i) => i !== idx)
-            .map((r, i) => ({ ...r, installment_no: i + 1 }));
-        onChange(next);
+        onChange((prev) =>
+            prev
+                .filter((_, i) => i !== idx)
+                .map((r, i) => ({ ...r, installment_no: i + 1 })),
+        );
     };
 
     const total = installments.reduce((s, r) => s + Number(r.amount || 0), 0);
@@ -53,12 +60,17 @@ export default function InstallmentSection({
         <div className="border border-slate-300 rounded-lg p-4 bg-slate-50">
             <div className="flex justify-between items-center mb-3">
                 <h4 className="text-sm font-bold text-slate-700">
-                    Installments
+                    Installments{" "}
+                    {installments.length > 0 && (
+                        <span className="text-purple-700">
+                            ({installments.length})
+                        </span>
+                    )}
                 </h4>
                 <button
                     type="button"
                     onClick={addRow}
-                    className="text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-lg"
+                    className="text-xs font-semibold bg-purple-700 hover:bg-purple-800 text-white px-3 py-1.5 rounded-lg"
                 >
                     + Add Installment
                 </button>
@@ -66,7 +78,7 @@ export default function InstallmentSection({
 
             {installments.length === 0 && (
                 <p className="text-xs text-slate-500 italic py-2">
-                    No installments yet. Click "Add Installment" to record a
+                    No installments. Click "Add Installment" to record a
                     payment.
                 </p>
             )}
@@ -108,14 +120,14 @@ export default function InstallmentSection({
                                         <input
                                             type="number"
                                             min={0}
-                                            step={1000}
+                                            step="any"
                                             className="w-full border border-slate-300 rounded px-2 py-1 text-right tabular-nums"
                                             value={r.amount}
                                             onChange={(e) =>
                                                 updateRow(
                                                     i,
                                                     "amount",
-                                                    Number(e.target.value),
+                                                    e.target.value,
                                                 )
                                             }
                                         />
@@ -123,7 +135,7 @@ export default function InstallmentSection({
                                     <td className="px-2 py-1">
                                         <input
                                             type="text"
-                                            placeholder="e.g. CHQ-001"
+                                            placeholder="CHQ-001"
                                             className="w-full border border-slate-300 rounded px-2 py-1 font-mono"
                                             value={r.cheque_no ?? ""}
                                             onChange={(e) =>
@@ -205,7 +217,7 @@ export default function InstallmentSection({
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
                 <div className="bg-white rounded border border-slate-200 px-3 py-2">
                     <div className="text-slate-500 uppercase text-[10px] font-bold">
-                        Total Approved
+                        Approved
                     </div>
                     <div className="font-bold text-slate-800">
                         {fmt(approvedAmount)}
@@ -213,17 +225,13 @@ export default function InstallmentSection({
                 </div>
                 <div className="bg-white rounded border border-slate-200 px-3 py-2">
                     <div className="text-slate-500 uppercase text-[10px] font-bold">
-                        Total Scheduled
+                        Scheduled
                     </div>
                     <div
-                        className={`font-bold ${balanced ? "text-emerald-700" : "text-red-700"}`}
+                        className={`font-bold ${balanced ? "text-emerald-700" : "text-amber-700"}`}
                     >
-                        {fmt(total)}
-                        {!balanced && (
-                            <span className="ml-1 text-[10px] font-normal">
-                                ⚠ mismatch
-                            </span>
-                        )}
+                        {fmt(total)}{" "}
+                        {!balanced && <span className="text-[10px]">⚠</span>}
                     </div>
                 </div>
                 <div className="bg-white rounded border border-slate-200 px-3 py-2">

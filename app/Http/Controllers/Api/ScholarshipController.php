@@ -27,7 +27,7 @@ class ScholarshipController extends Controller
             });
         }
 
-        foreach (['academic_year','scheme','donor','funding_group','payment_status','renewal_status','category'] as $f) {
+        foreach (['academic_year','scheme','donor','funding_group','department','payment_status','renewal_status','category'] as $f) {
             if ($request->filled($f)) {
                 $query->where($f, $request->input($f));
             }
@@ -78,14 +78,17 @@ class ScholarshipController extends Controller
 
     public function show(Scholarship $scholarship)
     {
+        $scholarship->load('installments');
         return response()->json(['data' => $scholarship]);
     }
 
     public function update(Request $request, Scholarship $scholarship)
     {
         $scholarship->update($this->validateData($request));
+        $scholarship->syncPaymentStatus();
         app(DuplicateAidDetector::class)->rebuild();
-        return response()->json($scholarship);
+
+        return response()->json($scholarship->fresh());
     }
 
     public function destroy(Scholarship $scholarship)
@@ -150,17 +153,20 @@ class ScholarshipController extends Controller
             'academic_year'   => 'required|string|max:20',
             'donor'           => 'required|string|max:100',
             'funding_group'   => 'nullable|string|max:100',
+            'department' => 'nullable|string|max:120',
             'approved_amount' => 'required|numeric|min:0',
             'cheque_no'       => 'nullable|string|max:60',
             'received_date'   => 'nullable|date',
             'payment_status'  => 'required|in:pending,partial,paid,failed',
             'renewal_status'  => 'required|in:not_due,due,submitted,approved,rejected',
             'notes'           => 'nullable|string|max:2000',
+            'phone'           => 'nullable|string|max:50',
         ]);
 
         if (empty($data['cheque_no']))     $data['cheque_no'] = null;
         if (empty($data['received_date'])) $data['received_date'] = null;
         if (empty($data['funding_group'])) $data['funding_group'] = null;
+        if (empty($data['department']))    $data['department'] = null;
         if (empty($data['cnic']))          $data['cnic'] = null;
 
         if ($data['received_date'] && $data['payment_status'] === 'pending') {
@@ -168,5 +174,80 @@ class ScholarshipController extends Controller
         }
 
         return $data;
+    }
+
+        /**
+     * Create a copy of this scholarship for a different academic year.
+     * Used for renewals (roll forward) or backfilling (roll backward).
+     */
+    public function rollOver(Request $request, Scholarship $scholarship)
+    {
+        $data = $request->validate([
+            'academic_year'   => 'required|string|max:20',
+            'category'        => 'required|in:fresh,renewal',
+            'renewal_status'  => 'required|in:not_due,due,submitted,approved,rejected',
+            'approved_amount' => 'nullable|numeric|min:0',
+        ]);
+
+        // Reject if student already has this scheme in the target year
+        $exists = Scholarship::where('student_id', $scholarship->student_id)
+            ->where('scheme', $scholarship->scheme)
+            ->where('academic_year', $data['academic_year'])
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'message' => "A {$scholarship->scheme} record already exists for {$scholarship->student_id} in {$data['academic_year']}.",
+            ], 409);
+        }
+
+        // Also reject if source is the same year
+        if ($data['academic_year'] === $scholarship->academic_year) {
+            return response()->json([
+                'message' => 'Target year must be different from the source year.',
+            ], 422);
+        }
+
+        $new = Scholarship::create([
+            'student_id'      => $scholarship->student_id,
+            'student_name'    => $scholarship->student_name,
+            'cnic'            => $scholarship->cnic,
+            'scheme'          => $scholarship->scheme,
+            'category'        => $data['category'],
+            'academic_year'   => $data['academic_year'],
+            'donor'           => $scholarship->donor,
+            'funding_group'   => $scholarship->funding_group,
+            'department'      => $scholarship->department,
+            'approved_amount' => $data['approved_amount'] ?? $scholarship->approved_amount,
+            'cheque_no'       => null,
+            'received_date'   => null,
+            'payment_status'  => 'pending',
+            'renewal_status'  => $data['renewal_status'],
+            'notes'           => "Rolled over from #{$scholarship->id} ({$scholarship->academic_year})"
+                                . ($scholarship->notes ? "\n\n" . $scholarship->notes : ''),
+        ]);
+
+        \App\Models\AuditLog::create([
+            'user_id'     => auth()->id(),
+            'user_email'  => auth()->user()?->email,
+            'action'      => 'rolled_over',
+            'model_type'  => Scholarship::class,
+            'model_id'    => $new->id,
+            'old_values'  => [
+                'source_scholarship_id' => $scholarship->id,
+                'source_academic_year'  => $scholarship->academic_year,
+            ],
+            'new_values'  => [
+                'academic_year' => $new->academic_year,
+                'category'      => $new->category,
+            ],
+            'ip_address'  => request()->ip(),
+            'user_agent'  => request()->userAgent(),
+            'description' => "Rolled over from #{$scholarship->id} ({$scholarship->academic_year} → {$new->academic_year})",
+        ]);
+
+        app(DuplicateAidDetector::class)->rebuild();
+
+        return response()->json(['data' => $new], 201);
     }
 }

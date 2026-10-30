@@ -17,23 +17,37 @@ class DuplicateCheckController extends Controller
         $flags = DuplicateFlag::orderByRaw("FIELD(review_status,'pending','escalated','confirmed_duplicate','cleared')")
             ->get()
             ->map(function ($f) {
-                $digits = str_starts_with($f->person_key, 'C:') ? substr($f->person_key, 2) : null;
-                $sid = str_starts_with($f->person_key, 'S:') ? substr($f->person_key, 2) : null;
+                // person_key is 'SID:K23EL086' or legacy 'C:...' / 'S:...'
+                $studentId = null;
+                if (str_starts_with($f->person_key, 'SID:')) {
+                    $studentId = substr($f->person_key, 4);
+                } elseif (str_starts_with($f->person_key, 'S:')) {
+                    $studentId = substr($f->person_key, 2);
+                }
+
+                $cnicDigits = null;
+                if (str_starts_with($f->person_key, 'C:')) {
+                    $cnicDigits = substr($f->person_key, 2);
+                }
 
                 $rows = Scholarship::where('academic_year', $f->academic_year)
-                    ->when($digits, fn ($q) => $q->whereRaw("REPLACE(cnic,'-','') = ?", [$digits]))
-                    ->when(!$digits, fn ($q) => $q->where('student_id', $sid))
-                    ->get(['id','student_id','student_name','cnic','scheme','donor','approved_amount','payment_status','cheque_no','received_date']);
+                    ->when($studentId, fn ($q) => $q->where('student_id', $studentId))
+                    ->when(!$studentId && $cnicDigits, function ($q) use ($cnicDigits) {
+                        $q->whereRaw("REPLACE(REPLACE(cnic,'-',''),' ','') = ?", [$cnicDigits]);
+                    })
+                    ->get(['id','student_id','student_name','cnic','scheme','donor','approved_amount','payment_status']);
+
                 return [
-                    'id'            => $f->id,
-                    'person_key'    => $f->person_key,
-                    'academic_year' => $f->academic_year,
-                    'schemes'       => $f->schemes,
-                    'total_amount'  => (float) $f->total_amount,
-                    'review_status' => $f->review_status,
-                    'committee_note'=> $f->committee_note,
-                    'reviewed_at'   => $f->reviewed_at?->toIso8601String(),
-                    'rows'          => $rows,
+                    'id'             => $f->id,
+                    'person_key'     => $f->person_key,
+                    'student_id'     => $studentId ?? $f->person_key,
+                    'academic_year'  => $f->academic_year,
+                    'schemes'        => $f->schemes,
+                    'total_amount'   => (float) $f->total_amount,
+                    'review_status'  => $f->review_status,
+                    'committee_note' => $f->committee_note,
+                    'reviewed_at'    => $f->reviewed_at?->toIso8601String(),
+                    'rows'           => $rows,
                 ];
             });
 
@@ -54,5 +68,34 @@ class DuplicateCheckController extends Controller
         ]);
 
         return response()->json(['data' => $flag]);
+    }
+
+    public function chequeDuplicates()
+    {
+        $groups = Scholarship::whereNotNull('cheque_no')
+            ->where('cheque_no', '!=', '')
+            ->select('cheque_no')
+            ->selectRaw('COUNT(*) as record_count')
+            ->selectRaw('COUNT(DISTINCT student_id) as student_count')
+            ->selectRaw('SUM(approved_amount) as total_amount')
+            ->groupBy('cheque_no')
+            ->havingRaw('COUNT(DISTINCT student_id) > 1')
+            ->get();
+
+        $flags = $groups->map(function ($g) {
+            $rows = Scholarship::where('cheque_no', $g->cheque_no)
+                ->get(['id','student_id','student_name','cnic','scheme','donor',
+                       'approved_amount','payment_status','received_date','academic_year']);
+
+            return [
+                'cheque_no'     => $g->cheque_no,
+                'record_count'  => (int) $g->record_count,
+                'student_count' => (int) $g->student_count,
+                'total_amount'  => (float) $g->total_amount,
+                'rows'          => $rows,
+            ];
+        });
+
+        return response()->json(['data' => $flags->values()]);
     }
 }

@@ -42,7 +42,7 @@ class LookupController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'type' => ['required', Rule::in(['scheme', 'donor', 'academic_year', 'funding_group'])],
+            'type' => ['required', Rule::in(['scheme', 'donor', 'academic_year', 'funding_group', 'semester'])],
             'name' => 'required|string|max:120',
         ]);
 

@@ -10,10 +10,11 @@ class Scholarship extends Model
     use Auditable;
 
     protected $fillable = [
-        'student_id', 'student_name', 'cnic',
-        'scheme', 'category', 'academic_year', 'donor', 'funding_group',
-        'approved_amount', 'cheque_no', 'received_date',
-        'payment_status', 'renewal_status', 'notes',
+    'student_id', 'student_name', 'cnic',
+    'scheme', 'category', 'academic_year', 'donor',
+    'funding_group', 'department',
+    'approved_amount', 'cheque_no', 'received_date',
+    'payment_status', 'renewal_status', 'notes', 'phone',
     ];
 
     protected $casts = [

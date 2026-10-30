@@ -6,20 +6,17 @@ import {
     bulkUpdateScholarships,
 } from "../services/scholarships";
 import ScholarshipModal from "../components/ScholarshipModal";
+import RollOverModal from "../components/RollOverModal";
+import StudentDrawer from "../components/StudentDrawer";
 import StatusBadge from "../components/StatusBadge";
 import Pagination from "../components/Pagination";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 
-const fmt = (n) => new Intl.NumberFormat("en-PK").format(n);
-const fmtDate = (s) =>
-    s
-        ? new Date(s).toLocaleDateString("en-PK", {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-          })
-        : "—";
+const fmt = (n) =>
+    new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(
+        Number(n) || 0,
+    );
 
 const CATEGORY_BADGE = {
     fresh: "bg-blue-100 text-blue-800 border-blue-200",
@@ -31,19 +28,25 @@ export default function Register() {
     const confirm = useConfirm();
     const qc = useQueryClient();
 
+    // ── UI state ──
     const [search, setSearch] = useState("");
     const [filters, setFilters] = useState({});
     const [page, setPage] = useState(1);
     const [perPage, setPerPage] = useState(25);
-    const [editing, setEditing] = useState(null);
-    const [open, setOpen] = useState(false);
     const [selected, setSelected] = useState(new Set());
 
-    // Whenever filters, search, or pagination changes, clear selection
+    // ── Modal state ──
+    const [editingId, setEditingId] = useState(null); // for ScholarshipModal
+    const [openEdit, setOpenEdit] = useState(false);
+    const [rollOverTarget, setRollOverTarget] = useState(null); // for RollOverModal
+    const [drawerScholarship, setDrawerScholarship] = useState(null); // for StudentDrawer
+
+    // Clear selection whenever filters, search, pagination change
     useEffect(() => {
         setSelected(new Set());
     }, [search, filters, page, perPage]);
 
+    // ── Data query ──
     const { data, isLoading, isFetching } = useQuery({
         queryKey: ["scholarships", { search, ...filters, page, perPage }],
         queryFn: () =>
@@ -51,12 +54,15 @@ export default function Register() {
         keepPreviousData: true,
     });
 
+    // ── Mutations ──
     const del = useMutation({
         mutationFn: deleteScholarship,
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["scholarships"] });
             qc.invalidateQueries({ queryKey: ["dashboard"] });
             qc.invalidateQueries({ queryKey: ["duplicates"] });
+            qc.invalidateQueries({ queryKey: ["reconciliation"] });
+            setDrawerScholarship(null);
             toast.success("Record deleted");
         },
         onError: () => toast.error("Delete failed"),
@@ -75,19 +81,7 @@ export default function Register() {
             toast.error(e?.response?.data?.message ?? "Bulk update failed"),
     });
 
-    const doBulk = async (patch) => {
-        if (!selected.size) return;
-        const description = Object.entries(patch)
-            .map(([k, v]) => `${k.replace(/_/g, " ")} → ${v}`)
-            .join(", ");
-        const ok = await confirm({
-            title: `Update ${selected.size} record(s)?`,
-            message: `Apply: ${description}`,
-            confirmLabel: "Yes, update",
-        });
-        if (ok) bulkMutation.mutate({ ids: [...selected], patch });
-    };
-
+    // ── Helpers ──
     const applyFilter = (patch) => {
         setFilters((f) => ({ ...f, ...patch }));
         setPage(1);
@@ -111,6 +105,19 @@ export default function Register() {
     const allSelected =
         (data?.data?.length ?? 0) > 0 && selected.size === data.data.length;
 
+    const doBulk = async (patch) => {
+        if (!selected.size) return;
+        const description = Object.entries(patch)
+            .map(([k, v]) => `${k.replace(/_/g, " ")} → ${v}`)
+            .join(", ");
+        const ok = await confirm({
+            title: `Update ${selected.size} record(s)?`,
+            message: `Apply: ${description}`,
+            confirmLabel: "Yes, update",
+        });
+        if (ok) bulkMutation.mutate({ ids: [...selected], patch });
+    };
+
     const exportCsv = () => {
         const headers = [
             "Student ID",
@@ -124,7 +131,6 @@ export default function Register() {
             "Cheque No.",
             "Received Date",
             "Payment",
-            "Installments",
             "Renewal",
         ];
         const rows = (data?.data ?? []).map((s) => [
@@ -163,10 +169,30 @@ export default function Register() {
         toast.success(`Exported ${rows.length} rows`);
     };
 
+    const openEditModal = (id = null) => {
+        setEditingId(id);
+        setOpenEdit(true);
+    };
+
+    const afterSave = () => {
+        setOpenEdit(false);
+        setEditingId(null);
+        qc.invalidateQueries({ queryKey: ["scholarships"] });
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+        qc.invalidateQueries({ queryKey: ["duplicates"] });
+        qc.invalidateQueries({ queryKey: ["reconciliation"] });
+        if (drawerScholarship) {
+            // refresh drawer content
+            qc.invalidateQueries({ queryKey: ["scholarship-notes"] });
+            qc.invalidateQueries({ queryKey: ["scholarship-documents"] });
+            qc.invalidateQueries({ queryKey: ["scholarship-history"] });
+        }
+    };
+
     return (
         <div className="space-y-4">
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-                {/* --- Header bar --- */}
+                {/* ── Header bar ── */}
                 <div className="px-5 py-4 border-b flex flex-wrap items-center gap-2">
                     <h2 className="font-semibold mr-2">
                         Master Scholarship Register
@@ -174,18 +200,15 @@ export default function Register() {
                     <span className="text-xs text-slate-500">
                         {data?.total ?? 0} records
                         {isFetching && (
-                            <span className="ml-2 text-emerald-600">
+                            <span className="ml-2 text-purple-600">
                                 updating…
                             </span>
                         )}
                     </span>
                     <div className="flex-1" />
                     <button
-                        className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-sm font-semibold"
-                        onClick={() => {
-                            setEditing(null);
-                            setOpen(true);
-                        }}
+                        className="bg-purple-700 hover:bg-purple-800 text-white px-4 py-2 rounded-lg text-sm font-semibold"
+                        onClick={() => openEditModal(null)}
                     >
                         + Add Record
                     </button>
@@ -197,16 +220,15 @@ export default function Register() {
                     </button>
                 </div>
 
-                {/* --- Bulk action bar (only shows when rows are selected) --- */}
+                {/* ── Bulk action bar (only when items selected) ── */}
                 {selected.size > 0 && (
-                    <div className="px-5 py-3 border-b bg-emerald-50 flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-emerald-900">
+                    <div className="px-5 py-3 border-b bg-purple-50 flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-purple-900">
                             {selected.size} record
                             {selected.size === 1 ? "" : "s"} selected
                         </span>
                         <div className="flex-1" />
 
-                        {/* Set payment status */}
                         <select
                             className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white"
                             defaultValue=""
@@ -225,7 +247,6 @@ export default function Register() {
                             <option value="failed">→ Failed</option>
                         </select>
 
-                        {/* Set renewal status */}
                         <select
                             className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white"
                             defaultValue=""
@@ -245,7 +266,6 @@ export default function Register() {
                             <option value="rejected">→ Rejected</option>
                         </select>
 
-                        {/* Set category */}
                         <select
                             className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white"
                             defaultValue=""
@@ -271,7 +291,7 @@ export default function Register() {
                     </div>
                 )}
 
-                {/* --- Filters --- */}
+                {/* ── Filters ── */}
                 <div className="px-5 py-3 border-b flex flex-wrap gap-2 bg-slate-50">
                     <input
                         className="border border-slate-300 rounded-lg px-3 py-2 text-sm flex-1 min-w-[240px]"
@@ -350,9 +370,9 @@ export default function Register() {
                     </button>
                 </div>
 
-                {/* --- Table --- */}
-                <div className="overflow-auto">
-                    <table className="w-full text-sm">
+                {/* ── Table ── */}
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[900px]">
                         <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wide">
                             <tr>
                                 <th className="px-3 py-2 w-8">
@@ -362,35 +382,46 @@ export default function Register() {
                                         onChange={toggleAll}
                                     />
                                 </th>
-                                {[
-                                    "Student ID",
-                                    "Student",
-                                    "CNIC",
-                                    "Scheme",
-                                    "Category",
-                                    "Year",
-                                    "Donor",
-                                    "Approved",
-                                    "Cheque No.",
-                                    "Received",
-                                    "Payment",
-                                    "Renewal",
-                                    "Actions",
-                                ].map((h) => (
-                                    <th
-                                        key={h}
-                                        className="text-left px-4 py-2 whitespace-nowrap"
-                                    >
-                                        {h}
-                                    </th>
-                                ))}
+                                <th className="text-left px-3 py-2 whitespace-nowrap">
+                                    Student ID
+                                </th>
+                                <th className="text-left px-3 py-2 whitespace-nowrap">
+                                    Name
+                                </th>
+                                <th className="text-left px-3 py-2 whitespace-nowrap hidden lg:table-cell">
+                                    Scheme
+                                </th>
+                                <th className="text-left px-3 py-2 whitespace-nowrap hidden xl:table-cell">
+                                    Category
+                                </th>
+                                <th className="text-left px-3 py-2 whitespace-nowrap">
+                                    Year
+                                </th>
+                                <th className="text-left px-3 py-2 whitespace-nowrap hidden xl:table-cell">
+                                    Donor
+                                </th>
+                                <th className="text-right px-3 py-2 whitespace-nowrap">
+                                    Approved
+                                </th>
+                                <th className="text-left px-3 py-2 whitespace-nowrap">
+                                    Payment
+                                </th>
+                                <th className="text-center px-3 py-2 whitespace-nowrap hidden md:table-cell">
+                                    Inst.
+                                </th>
+                                <th className="text-left px-3 py-2 whitespace-nowrap hidden lg:table-cell">
+                                    Renewal
+                                </th>
+                                <th className="text-right px-3 py-2 whitespace-nowrap">
+                                    Actions
+                                </th>
                             </tr>
                         </thead>
                         <tbody className={isFetching ? "opacity-60" : ""}>
                             {isLoading && (
                                 <tr>
                                     <td
-                                        colSpan={15}
+                                        colSpan={12}
                                         className="p-6 text-center text-slate-500"
                                     >
                                         Loading…
@@ -400,7 +431,7 @@ export default function Register() {
                             {!isLoading && data?.data.length === 0 && (
                                 <tr>
                                     <td
-                                        colSpan={15}
+                                        colSpan={12}
                                         className="p-6 text-center text-slate-500"
                                     >
                                         No records match the filters.
@@ -410,100 +441,93 @@ export default function Register() {
                             {data?.data.map((s) => {
                                 const isSelected = selected.has(s.id);
                                 const rowBg = isSelected
-                                    ? "bg-emerald-50"
+                                    ? "bg-purple-50"
                                     : s.flagged
                                       ? "bg-amber-50/60"
-                                      : "";
+                                      : "hover:bg-slate-50";
+                                const paidCount =
+                                    s.installments?.filter(
+                                        (i) => i.status === "received",
+                                    ).length ?? 0;
+                                const totalCount = s.installments?.length ?? 0;
+
                                 return (
                                     <tr
                                         key={s.id}
-                                        className={`border-t ${rowBg}`}
+                                        className={`border-t cursor-pointer ${rowBg}`}
+                                        onClick={(e) => {
+                                            if (
+                                                e.target.closest(
+                                                    "button, input, select, a",
+                                                )
+                                            )
+                                                return;
+                                            setDrawerScholarship(s);
+                                        }}
                                     >
-                                        <td className="px-3 py-2">
+                                        <td
+                                            className="px-3 py-2"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
                                                 onChange={() => toggleRow(s.id)}
                                             />
                                         </td>
-                                        <td className="px-4 py-2 font-mono">
+                                        <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
                                             {s.student_id}
                                             {s.flagged && (
-                                                <span className="ml-2 text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
+                                                <span className="ml-1.5 text-[9px] font-bold bg-amber-100 text-amber-800 px-1 py-0.5 rounded">
                                                     DUP
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-2">
-                                            {s.student_name}
+                                        <td
+                                            className="px-3 py-2 max-w-[140px] truncate"
+                                            title={s.student_name ?? ""}
+                                        >
+                                            {s.student_name ?? "—"}
                                         </td>
-                                        <td className="px-4 py-2 font-mono text-xs">
-                                            {s.cnic ?? "—"}
+                                        <td
+                                            className="px-3 py-2 max-w-[120px] truncate hidden lg:table-cell"
+                                            title={s.scheme}
+                                        >
+                                            {s.scheme}
                                         </td>
-                                        <td className="px-4 py-2">
+                                        <td className="px-3 py-2 hidden xl:table-cell">
                                             <span
-                                                className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${CATEGORY_BADGE[s.category]}`}
+                                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${CATEGORY_BADGE[s.category]}`}
                                             >
                                                 {s.category}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-2">
+                                        <td className="px-3 py-2 text-xs whitespace-nowrap">
                                             {s.academic_year}
                                         </td>
-                                        <td className="px-4 py-2">{s.donor}</td>
-                                        <td className="px-4 py-2 text-right tabular-nums">
+                                        <td
+                                            className="px-3 py-2 text-xs max-w-[100px] truncate hidden xl:table-cell"
+                                            title={s.donor}
+                                        >
+                                            {s.donor}
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
                                             {fmt(s.approved_amount)}
                                         </td>
-                                        <td className="px-4 py-2 font-mono text-xs">
-                                            {s.cheque_no || (
-                                                <span className="text-slate-400">
-                                                    —
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-2 text-xs">
-                                            {s.received_date ? (
-                                                <span className="text-slate-700">
-                                                    {fmtDate(s.received_date)}
-                                                </span>
-                                            ) : (
-                                                <span className="text-slate-400">
-                                                    —
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-2">
+                                        <td className="px-3 py-2">
                                             <StatusBadge
                                                 kind="payment"
                                                 value={s.payment_status}
                                             />
                                         </td>
-                                        <td className="px-4 py-2">
-                                            <StatusBadge
-                                                kind="renewal"
-                                                value={s.renewal_status}
-                                            />
-                                        </td>
-                                        <td className="px-4 py-2 text-xs">
-                                            {s.installments?.length > 0 ? (
-                                                <span className="inline-flex items-center gap-1">
-                                                    <span className="font-mono font-semibold text-slate-700">
-                                                        {
-                                                            s.installments.filter(
-                                                                (i) =>
-                                                                    i.status ===
-                                                                    "received",
-                                                            ).length
-                                                        }
+                                        <td className="px-3 py-2 text-center text-xs hidden md:table-cell whitespace-nowrap">
+                                            {totalCount > 0 ? (
+                                                <span className="font-mono">
+                                                    <span className="font-semibold text-slate-700">
+                                                        {paidCount}
                                                     </span>
                                                     <span className="text-slate-400">
-                                                        /
-                                                    </span>
-                                                    <span className="font-mono text-slate-500">
-                                                        {s.installments.length}
-                                                    </span>
-                                                    <span className="text-slate-400 text-[10px]">
-                                                        paid
+                                                        /{totalCount}
                                                     </span>
                                                 </span>
                                             ) : (
@@ -512,16 +536,32 @@ export default function Register() {
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-2">
-                                            <div className="flex gap-2">
+                                        <td className="px-3 py-2 hidden lg:table-cell">
+                                            <StatusBadge
+                                                kind="renewal"
+                                                value={s.renewal_status}
+                                            />
+                                        </td>
+                                        <td
+                                            className="px-3 py-2"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <div className="flex gap-2 justify-end flex-wrap">
                                                 <button
                                                     className="text-blue-700 text-xs font-semibold hover:underline"
-                                                    onClick={() => {
-                                                        setEditing(s.id);
-                                                        setOpen(true);
-                                                    }}
+                                                    onClick={() =>
+                                                        openEditModal(s.id)
+                                                    }
                                                 >
                                                     Edit
+                                                </button>
+                                                <button
+                                                    className="text-purple-700 text-xs font-semibold hover:underline"
+                                                    onClick={() =>
+                                                        setRollOverTarget(s)
+                                                    }
+                                                >
+                                                    Roll Over
                                                 </button>
                                                 <button
                                                     className="text-red-700 text-xs font-semibold hover:underline"
@@ -560,15 +600,44 @@ export default function Register() {
                 />
             </div>
 
-            {open && (
+            {/* ── Edit / Add modal ── */}
+            {openEdit && (
                 <ScholarshipModal
-                    scholarshipId={editing}
-                    onClose={() => setOpen(false)}
-                    onSaved={() => {
-                        setOpen(false);
+                    scholarshipId={editingId}
+                    onClose={() => {
+                        setOpenEdit(false);
+                        setEditingId(null);
+                    }}
+                    onSaved={afterSave}
+                />
+            )}
+
+            {/* ── Roll Over modal ── */}
+            {rollOverTarget && (
+                <RollOverModal
+                    scholarship={rollOverTarget}
+                    onClose={() => setRollOverTarget(null)}
+                    onRolledOver={() => {
                         qc.invalidateQueries({ queryKey: ["scholarships"] });
                         qc.invalidateQueries({ queryKey: ["dashboard"] });
                         qc.invalidateQueries({ queryKey: ["duplicates"] });
+                    }}
+                />
+            )}
+
+            {/* ── Student drawer ── */}
+            {drawerScholarship && (
+                <StudentDrawer
+                    scholarship={drawerScholarship}
+                    onClose={() => setDrawerScholarship(null)}
+                    onEdit={(id) => {
+                        setDrawerScholarship(null);
+                        openEditModal(id);
+                    }}
+                    onRollOver={() => {
+                        const target = drawerScholarship;
+                        setDrawerScholarship(null);
+                        if (target) setRollOverTarget(target);
                     }}
                 />
             )}

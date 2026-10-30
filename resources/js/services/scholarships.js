@@ -134,3 +134,95 @@ export const replaceAllInstallments = (scholarshipId, installments) =>
     api
         .put(`/scholarships/${scholarshipId}/installments`, { installments })
         .then((r) => r.data);
+// Student drawer — notes, documents, related, history
+export const fetchScholarshipNotes = (id) =>
+    api.get(`/scholarships/${id}/notes`).then((r) => r.data.data);
+export const addScholarshipNote = (id, body) =>
+    api.post(`/scholarships/${id}/notes`, { body }).then((r) => r.data);
+export const deleteScholarshipNote = (id, noteId) =>
+    api.delete(`/scholarships/${id}/notes/${noteId}`);
+
+export const fetchScholarshipDocuments = (id) =>
+    api.get(`/scholarships/${id}/documents`).then((r) => r.data.data);
+export const uploadScholarshipDocument = (id, formData) =>
+    api
+        .post(`/scholarships/${id}/documents`, formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+        })
+        .then((r) => r.data);
+export const deleteScholarshipDocument = (id, docId) =>
+    api.delete(`/scholarships/${id}/documents/${docId}`);
+export const documentDownloadUrl = (id, docId) =>
+    `/api/scholarships/${id}/documents/${docId}/download`;
+
+export const fetchScholarshipRelated = (id) =>
+    api.get(`/scholarships/${id}/related`).then((r) => r.data.data);
+export const fetchScholarshipHistory = (id) =>
+    api.get(`/scholarships/${id}/history`).then((r) => r.data.data);
+
+// Announcement documents
+export const fetchAnnouncementDocuments = (announcementId) =>
+    api
+        .get(`/announcements/${announcementId}/documents`)
+        .then((r) => r.data.data);
+export const uploadAnnouncementDocument = (announcementId, formData) =>
+    api
+        .post(`/announcements/${announcementId}/documents`, formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+        })
+        .then((r) => r.data);
+export const deleteAnnouncementDocument = (announcementId, docId) =>
+    api.delete(`/announcements/${announcementId}/documents/${docId}`);
+export const announcementDocumentDownloadUrl = (announcementId, docId) =>
+    `/api/announcements/${announcementId}/documents/${docId}/download`;
+
+export const fetchReportStudentWise = (year) =>
+    api
+        .get("/reports/student-wise", { params: { academic_year: year } })
+        .then((r) => r.data);
+export const fetchReportYearWise = () =>
+    api.get("/reports/year-wise").then((r) => r.data);
+export const fetchReportDepartmentWise = (year) =>
+    api
+        .get("/reports/department-wise", { params: { academic_year: year } })
+        .then((r) => r.data);
+export const fetchReportSummary = (year) =>
+    api
+        .get("/reports/summary", { params: { academic_year: year } })
+        .then((r) => r.data);
+
+export const fetchMultiRecordStudents = (year) =>
+    api
+        .get("/reports/multi-record-students", {
+            params: { academic_year: year },
+        })
+        .then((r) => r.data);
+
+export const fetchSecondInstallments = (year) =>
+    api
+        .get("/reports/second-installments", {
+            params: { academic_year: year },
+        })
+        .then((r) => r.data);
+
+export const fetchReportDonorWise = (year) =>
+    api
+        .get("/reports/donor-wise", { params: { academic_year: year } })
+        .then((r) => r.data);
+
+export const fetchReportStudentDetail = (filters = {}) =>
+    api.get("/reports/student-detail", { params: filters }).then((r) => r.data);
+
+// export const fetchPendingInstallments = (filters = {}) =>
+//     api
+//         .get("/reports/pending-installments", { params: filters })
+//         .then((r) => r.data);
+
+export const fetchPendingInstallments = (filters = {}) =>
+    api
+        .get("/reports/pending-installments", { params: filters })
+        .then((r) => r.data);
+
+// append to resources/js/services/scholarships.js
+export const rollOverScholarship = (id, data) =>
+    api.post(`/scholarships/${id}/roll-over`, data).then((r) => r.data);

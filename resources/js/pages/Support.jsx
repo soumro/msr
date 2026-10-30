@@ -6,6 +6,9 @@ import {
     updateAnnouncement,
     deleteAnnouncement,
 } from "../services/scholarships";
+import AnnouncementDocumentsModal from "../components/AnnouncementDocumentsModal";
+import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 
 const CAT = {
     announcement: "bg-blue-100 text-blue-800 border-blue-200",
@@ -14,14 +17,27 @@ const CAT = {
     renewal: "bg-emerald-100 text-emerald-800 border-emerald-200",
 };
 
+const fmtDate = (s) =>
+    s
+        ? new Date(s).toLocaleDateString("en-PK", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+          })
+        : "—";
+
 export default function Support() {
+    const toast = useToast();
+    const confirm = useConfirm();
     const qc = useQueryClient();
+
     const [category, setCategory] = useState("");
     const [published, setPublished] = useState("");
     const [editing, setEditing] = useState(null);
     const [open, setOpen] = useState(false);
+    const [docsFor, setDocsFor] = useState(null);
 
-    const { data, isLoading } = useQuery({
+    const { data = [], isLoading } = useQuery({
         queryKey: ["announcements", { category, published }],
         queryFn: () =>
             fetchAnnouncements({
@@ -34,7 +50,11 @@ export default function Support() {
 
     const del = useMutation({
         mutationFn: deleteAnnouncement,
-        onSuccess: () => qc.invalidateQueries({ queryKey: ["announcements"] }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ["announcements"] });
+            toast.success("Announcement deleted");
+        },
+        onError: () => toast.error("Delete failed"),
     });
 
     const save = useMutation({
@@ -44,7 +64,10 @@ export default function Support() {
             qc.invalidateQueries({ queryKey: ["announcements"] });
             setOpen(false);
             setEditing(null);
+            toast.success("Saved");
         },
+        onError: (e) =>
+            toast.error(e?.response?.data?.message ?? "Save failed"),
     });
 
     return (
@@ -54,6 +77,9 @@ export default function Support() {
                     <h2 className="font-semibold mr-2">
                         Student Support Content
                     </h2>
+                    <span className="text-xs text-slate-500">
+                        {data.length} item{data.length === 1 ? "" : "s"}
+                    </span>
                     <div className="flex-1" />
                     <button
                         className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-sm font-semibold"
@@ -87,40 +113,62 @@ export default function Support() {
                         <option value="published">Published</option>
                         <option value="draft">Unpublished</option>
                     </select>
+                    <button
+                        className="border border-slate-300 px-3 py-2 rounded-lg text-sm hover:bg-slate-100"
+                        onClick={() => {
+                            setCategory("");
+                            setPublished("");
+                        }}
+                    >
+                        Clear
+                    </button>
                 </div>
 
-                <div className="overflow-auto">
+                <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wide">
                             <tr>
-                                {[
-                                    "Title",
-                                    "Category",
-                                    "Deadline",
-                                    "State",
-                                    "Content",
-                                    "Actions",
-                                ].map((h) => (
-                                    <th key={h} className="text-left px-4 py-2">
-                                        {h}
-                                    </th>
-                                ))}
+                                <th className="text-left px-4 py-2">Title</th>
+                                <th className="text-left px-4 py-2">
+                                    Category
+                                </th>
+                                <th className="text-left px-4 py-2">
+                                    Deadline
+                                </th>
+                                <th className="text-left px-4 py-2">State</th>
+                                <th className="text-left px-4 py-2">
+                                    Documents
+                                </th>
+                                <th className="text-left px-4 py-2">Content</th>
+                                <th className="text-right px-4 py-2">
+                                    Actions
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
                             {isLoading && (
                                 <tr>
                                     <td
-                                        colSpan={6}
+                                        colSpan={7}
                                         className="p-6 text-center text-slate-500"
                                     >
                                         Loading…
                                     </td>
                                 </tr>
                             )}
-                            {data?.map((a) => (
+                            {!isLoading && data.length === 0 && (
+                                <tr>
+                                    <td
+                                        colSpan={7}
+                                        className="p-6 text-center text-slate-500"
+                                    >
+                                        No student support content yet.
+                                    </td>
+                                </tr>
+                            )}
+                            {data.map((a) => (
                                 <tr key={a.id} className="border-t align-top">
-                                    <td className="px-4 py-2 font-semibold">
+                                    <td className="px-4 py-2 font-semibold max-w-[260px]">
                                         {a.title}
                                     </td>
                                     <td className="px-4 py-2">
@@ -130,8 +178,14 @@ export default function Support() {
                                             {a.category}
                                         </span>
                                     </td>
-                                    <td className="px-4 py-2 font-mono text-xs">
-                                        {a.deadline ?? "—"}
+                                    <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">
+                                        {a.deadline ? (
+                                            fmtDate(a.deadline)
+                                        ) : (
+                                            <span className="text-slate-400">
+                                                —
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-2">
                                         <span
@@ -146,12 +200,20 @@ export default function Support() {
                                                 : "Draft"}
                                         </span>
                                     </td>
+                                    <td className="px-4 py-2">
+                                        <button
+                                            onClick={() => setDocsFor(a)}
+                                            className="text-xs font-semibold text-emerald-700 hover:underline whitespace-nowrap"
+                                        >
+                                            📎 Manage
+                                        </button>
+                                    </td>
                                     <td className="px-4 py-2 max-w-[340px] text-xs text-slate-600">
                                         {a.body.slice(0, 140)}
                                         {a.body.length > 140 ? "…" : ""}
                                     </td>
                                     <td className="px-4 py-2">
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 justify-end">
                                             <button
                                                 className="text-blue-700 text-xs font-semibold hover:underline"
                                                 onClick={() => {
@@ -163,11 +225,16 @@ export default function Support() {
                                             </button>
                                             <button
                                                 className="text-red-700 text-xs font-semibold hover:underline"
-                                                onClick={() =>
-                                                    confirm(
-                                                        "Delete this item?",
-                                                    ) && del.mutate(a.id)
-                                                }
+                                                onClick={async () => {
+                                                    const ok = await confirm({
+                                                        title: "Delete this item?",
+                                                        message:
+                                                            "This will also delete any attached documents.",
+                                                        confirmLabel: "Delete",
+                                                        danger: true,
+                                                    });
+                                                    if (ok) del.mutate(a.id);
+                                                }}
                                             >
                                                 Delete
                                             </button>
@@ -190,6 +257,13 @@ export default function Support() {
                     onSave={(a) => save.mutate(a)}
                 />
             )}
+
+            {docsFor && (
+                <AnnouncementDocumentsModal
+                    announcement={docsFor}
+                    onClose={() => setDocsFor(null)}
+                />
+            )}
         </div>
     );
 }
@@ -207,12 +281,16 @@ function AnnouncementModal({ initial, onClose, onSave }) {
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
     return (
-        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-start justify-center p-4 overflow-auto">
+        <div
+            className="fixed inset-0 bg-slate-900/50 z-50 flex items-start justify-center p-4 overflow-auto"
+            onClick={onClose}
+        >
             <form
                 onSubmit={(e) => {
                     e.preventDefault();
-                    onSave(form);
+                    onSave({ ...form, deadline: form.deadline || null });
                 }}
+                onClick={(e) => e.stopPropagation()}
                 className="bg-white rounded-xl shadow-xl w-full max-w-2xl mt-10"
             >
                 <div className="px-5 py-3 border-b flex justify-between items-center">
@@ -222,7 +300,7 @@ function AnnouncementModal({ initial, onClose, onSave }) {
                     <button
                         type="button"
                         onClick={onClose}
-                        className="text-slate-500 hover:text-slate-900"
+                        className="text-slate-500 hover:text-slate-900 text-xl leading-none"
                     >
                         ✕
                     </button>
@@ -234,7 +312,7 @@ function AnnouncementModal({ initial, onClose, onSave }) {
                             Title *
                         </label>
                         <input
-                            className="w-full border rounded-lg px-3 py-2"
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
                             required
                             value={form.title}
                             onChange={(e) => set("title", e.target.value)}
@@ -247,7 +325,7 @@ function AnnouncementModal({ initial, onClose, onSave }) {
                                 Category *
                             </label>
                             <select
-                                className="w-full border rounded-lg px-3 py-2"
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
                                 value={form.category}
                                 onChange={(e) =>
                                     set("category", e.target.value)
@@ -271,7 +349,7 @@ function AnnouncementModal({ initial, onClose, onSave }) {
                             </label>
                             <input
                                 type="date"
-                                className="w-full border rounded-lg px-3 py-2"
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
                                 value={form.deadline ?? ""}
                                 onChange={(e) =>
                                     set("deadline", e.target.value)
@@ -286,7 +364,7 @@ function AnnouncementModal({ initial, onClose, onSave }) {
                         </label>
                         <textarea
                             rows={5}
-                            className="w-full border rounded-lg px-3 py-2"
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
                             required
                             value={form.body}
                             onChange={(e) => set("body", e.target.value)}

@@ -183,9 +183,12 @@ class BulkImportController extends Controller
                     ->where('academic_year', $context['academic_year'])
                     ->exists();
 
-                if ($exists) { $skipped++; continue; }
+                if ($exists) {
+                    $skipped++;
+                    continue;
+                }
 
-                Scholarship::create([
+                $scholarship = Scholarship::create([
                     'student_id'      => $row['student_id'],
                     'student_name'    => $row['student_name'],
                     'cnic'            => null,
@@ -202,15 +205,17 @@ class BulkImportController extends Controller
                     'notes'           => $row['notes'],
                 ]);
 
-                $scholarship = Scholarship::create([...]);
                 $scholarship->installments()->create([
                     'installment_no' => 1,
                     'amount'         => $row['approved_amount'],
                     'cheque_no'      => $row['cheque_no'],
                     'received_date'  => $row['received_date'],
-                    'status'         => ($row['cheque_no'] && $row['received_date']) ? 'received' : 'pending',
+                    'status'         => ($row['cheque_no'] && $row['received_date']) ? 'received'
+                                    : ($row['payment_status'] === 'paid' ? 'received' : 'pending'),
                 ]);
+
                 $scholarship->syncPaymentStatus();
+
                 $imported++;
             }
 
@@ -233,6 +238,7 @@ class BulkImportController extends Controller
                 'failed'   => $parsed['invalid_count'],
                 'errors'   => $errors,
             ], 201);
+
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;

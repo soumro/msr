@@ -8,6 +8,7 @@ const TABS = [
     { key: "scheme", label: "Schemes" },
     { key: "donor", label: "Donors" },
     { key: "academic_year", label: "Academic Years" },
+    { key: "semester", label: "Semesters" },
 ];
 
 export default function Lookups() {
