@@ -9,6 +9,7 @@ use App\Models\Scholarship;
 use App\Services\DuplicateAidDetector;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class BulkImportController extends Controller
@@ -20,37 +21,76 @@ class BulkImportController extends Controller
         'payment_status', 'renewal_status',
     ];
 
-    // ---------------- Full 13-column template ----------------
+    // ============================================================
+    // HISTORY — GET /api/import/history
+    // ============================================================
+    public function history()
+    {
+        try {
+            return response()->json([
+                'data' => ImportBatch::orderByDesc('id')->limit(20)->get(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Import history failed: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            // Graceful: return empty list so the page still loads
+            return response()->json([
+                'data'  => [],
+                'error' => $e->getMessage(),
+            ], 200);
+        }
+    }
 
+    // ============================================================
+    // TEMPLATE — GET /api/import/template
+    // ============================================================
     public function template()
     {
         $csv = implode(',', self::COLUMNS) . "\n";
         $csv .= "STU-1001,Ayesha Khan,35202-1234567-1,PMLTC,renewal,2025-2026,PMLTC,MUET Jamshoro,180000,PMLTC-R-001,2025-09-10,paid,approved\n";
 
         return response($csv, 200, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Type'        => 'text/csv; charset=UTF-8',
             'Content-Disposition' => 'attachment; filename="scholarship-import-template.csv"',
         ]);
     }
 
+    // ============================================================
+    // VALIDATE — POST /api/import/validate
+    // ============================================================
     public function validate(Request $request)
     {
-        $request->validate(['file' => 'required|file|mimes:csv,txt|max:10240']);
-        $parsed = $this->parseCsv($request->file('file'));
+        try {
+            $request->validate(['file' => 'required|file|mimes:csv,txt|max:10240']);
+            $parsed = $this->parseCsv($request->file('file'));
 
-        return response()->json([
-            'columns' => $parsed['columns'],
-            'rows'    => $parsed['rows'],
-            'errors'  => $parsed['errors'],
-            'total'   => count($parsed['rows']) + count($parsed['errors']),
-            'valid'   => count($parsed['rows']),
-        ]);
+            return response()->json([
+                'columns' => $parsed['columns'],
+                'rows'    => $parsed['rows'],
+                'errors'  => $parsed['errors'],
+                'total'   => count($parsed['rows']) + count($parsed['errors']),
+                'valid'   => count($parsed['rows']),
+            ]);
+        } catch (ValidationException $e) {
+            throw $e; // 422 with field errors
+        } catch (\Throwable $e) {
+            Log::error('Import validate failed: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'message' => 'Could not parse file: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
+    // ============================================================
+    // COMMIT — POST /api/import/commit
+    // ============================================================
     public function commit(Request $request)
     {
         $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:10240',
+            'file'         => 'required|file|mimes:csv,txt|max:10240',
             'skip_invalid' => 'boolean',
         ]);
 
@@ -63,46 +103,69 @@ class BulkImportController extends Controller
         }
 
         $imported = 0;
-        $skipped = 0;
-        $errors = [];
+        $skipped  = 0;
+        $errors   = [];
 
         DB::beginTransaction();
         try {
             $this->ensureLookups($parsed['rows']);
 
             foreach ($parsed['rows'] as $row) {
-                $exists = Scholarship::where('student_id', $row['student_id'])
-                    ->where('scheme', $row['scheme'])
-                    ->where('academic_year', $row['academic_year'])
-                    ->exists();
+                try {
+                    $scholarship = Scholarship::firstOrCreate(
+                        [
+                            'student_id'    => $row['student_id'],
+                            'scheme'        => $row['scheme'],
+                            'academic_year' => $row['academic_year'],
+                        ],
+                        [
+                            'student_name'    => $row['student_name'] ?? null,
+                            'cnic'            => $row['cnic'] ?? null,
+                            'category'        => $row['category'] ?? 'fresh',
+                            'donor'           => $row['donor'],
+                            'funding_group'   => $row['funding_group'] ?? null,
+                            'department'      => $row['department'] ?? null,
+                            'approved_amount' => $row['approved_amount'],
+                            'cheque_no'       => $row['cheque_no'] ?? null,
+                            'received_date'   => $row['received_date'] ?? null,
+                            'payment_status'  => $row['payment_status'] ?? 'pending',
+                            'renewal_status'  => $row['renewal_status'] ?? 'not_due',
+                            'notes'           => $row['notes'] ?? null,
+                        ]
+                    );
 
-                if ($exists) { $skipped++; continue; }
+                    if (!$scholarship->wasRecentlyCreated) {
+                        $skipped++;
+                        continue;
+                    }
 
-                Scholarship::create($row);
-                $scholarship = Scholarship::create($row);
+                    $scholarship->installments()->create([
+                        'installment_no' => 1,
+                        'amount'         => $row['approved_amount'],
+                        'cheque_no'      => $row['cheque_no'] ?? null,
+                        'received_date'  => $row['received_date'] ?? null,
+                        'status'         => ($row['cheque_no'] && $row['received_date'])
+                            ? 'received'
+                            : ($row['payment_status'] === 'paid' ? 'received' : 'pending'),
+                    ]);
 
-                $scholarship->installments()->create([
-                    'installment_no' => 1,
-                    'amount'         => $row['approved_amount'],
-                    'cheque_no'      => $row['cheque_no'],
-                    'received_date'  => $row['received_date'],
-                    'status'         => $row['cheque_no'] && $row['received_date'] ? 'received'
-                                    : ($row['cheque_no'] ? 'received' : 'pending'),
-                ]);
-                $scholarship->syncPaymentStatus();
-
-                $imported++;
+                    $scholarship->syncPaymentStatus();
+                    $imported++;
+                } catch (\Throwable $e) {
+                    $errors[] = "Row skipped: " . $e->getMessage();
+                    $skipped++;
+                }
             }
 
-            $errors = $parsed['errors'];
+            $errors = array_merge($errors, $parsed['errors']);
 
             ImportBatch::create([
                 'user_id'    => $request->user()?->id,
                 'filename'   => $request->file('file')->getClientOriginalName(),
-                'total_rows' => count($parsed['rows']) + count($errors),
+                'total_rows' => count($parsed['rows']) + count($parsed['errors']),
                 'imported'   => $imported,
                 'skipped'    => $skipped,
-                'failed'     => count($errors),
+                'failed'     => count($parsed['errors']),
                 'errors'     => $errors,
             ]);
 
@@ -112,57 +175,63 @@ class BulkImportController extends Controller
             return response()->json([
                 'imported' => $imported,
                 'skipped'  => $skipped,
-                'failed'   => count($errors),
+                'failed'   => count($parsed['errors']),
                 'errors'   => $errors,
             ], 201);
+
         } catch (\Throwable $e) {
             DB::rollBack();
-            throw $e;
+            Log::error('Import commit failed: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'message' => 'Import failed: ' . $e->getMessage(),
+            ], 500);
         }
     }
 
-    public function history()
-    {
-        return response()->json([
-            'data' => \App\Models\ImportBatch::orderByDesc('id')->limit(20)->get(),
-        ]);
-    }
-
-    // ---------------- Sheet mode ----------------
-
+    // ============================================================
+    // SHEET MODE (per-scholarship CSV)
+    // ============================================================
     public function sheetTemplate()
     {
         $csv = "S No.,Name of the Student,Roll No.,Cheque No,Dated,Scholarship Stipend,Remarks\n";
         $csv .= "1,Imran Yousaf,2021-CS-001,PMLTC-R-001,2025-09-10,180000,Approved\n";
-        $csv .= "2,Rabia Aslam,2021-CS-002,PMLTC-R-002,2025-09-10,180000,Approved\n";
 
         return response($csv, 200, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Type'        => 'text/csv; charset=UTF-8',
             'Content-Disposition' => 'attachment; filename="scholarship-sheet-template.csv"',
         ]);
     }
 
     public function sheetValidate(Request $request)
     {
-        $context = $this->sheetContext($request);
-        $parsed = $this->parseScholarshipSheet($request->file('file'), $context);
+        try {
+            $context = $this->sheetContext($request);
+            $parsed  = $this->parseScholarshipSheet($request->file('file'), $context);
 
-        return response()->json([
-            'context'       => $context,
-            'rows'          => $parsed['rows'],
-            'valid_count'   => $parsed['valid_count'],
-            'invalid_count' => $parsed['invalid_count'],
-        ]);
+            return response()->json([
+                'context'       => $context,
+                'rows'          => $parsed['rows'],
+                'valid_count'   => $parsed['valid_count'],
+                'invalid_count' => $parsed['invalid_count'],
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            Log::error('Sheet validate failed: ' . $e->getMessage());
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
     }
 
     public function sheetCommit(Request $request)
     {
         $context = $this->sheetContext($request);
-        $parsed = $this->parseScholarshipSheet($request->file('file'), $context);
+        $parsed  = $this->parseScholarshipSheet($request->file('file'), $context);
 
         $imported = 0;
-        $skipped = 0;
-        $errors = [];
+        $skipped  = 0;
+        $errors   = [];
 
         DB::beginTransaction();
         try {
@@ -178,45 +247,48 @@ class BulkImportController extends Controller
                     continue;
                 }
 
-                $exists = Scholarship::where('student_id', $row['student_id'])
-                    ->where('scheme', $context['scheme'])
-                    ->where('academic_year', $context['academic_year'])
-                    ->exists();
+                try {
+                    $scholarship = Scholarship::firstOrCreate(
+                        [
+                            'student_id'    => $row['student_id'],
+                            'scheme'        => $context['scheme'],
+                            'academic_year' => $context['academic_year'],
+                        ],
+                        [
+                            'student_name'    => $row['student_name'],
+                            'cnic'            => null,
+                            'category'        => $context['category'],
+                            'donor'           => $context['donor'],
+                            'funding_group'   => $context['funding_group'],
+                            'approved_amount' => $row['approved_amount'],
+                            'cheque_no'       => $row['cheque_no'],
+                            'received_date'   => $row['received_date'],
+                            'payment_status'  => $row['payment_status'],
+                            'renewal_status'  => $row['renewal_status'],
+                            'notes'           => $row['notes'],
+                        ]
+                    );
 
-                if ($exists) {
+                    if (!$scholarship->wasRecentlyCreated) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $scholarship->installments()->create([
+                        'installment_no' => 1,
+                        'amount'         => $row['approved_amount'],
+                        'cheque_no'      => $row['cheque_no'],
+                        'received_date'  => $row['received_date'],
+                        'status'         => ($row['cheque_no'] && $row['received_date']) ? 'received'
+                                          : ($row['payment_status'] === 'paid' ? 'received' : 'pending'),
+                    ]);
+
+                    $scholarship->syncPaymentStatus();
+                    $imported++;
+                } catch (\Throwable $e) {
                     $skipped++;
-                    continue;
+                    $errors[] = "S No. {$row['s_no']}: " . $e->getMessage();
                 }
-
-                $scholarship = Scholarship::create([
-                    'student_id'      => $row['student_id'],
-                    'student_name'    => $row['student_name'],
-                    'cnic'            => null,
-                    'scheme'          => $context['scheme'],
-                    'category'        => $context['category'],
-                    'academic_year'   => $context['academic_year'],
-                    'donor'           => $context['donor'],
-                    'funding_group'   => $context['funding_group'],
-                    'approved_amount' => $row['approved_amount'],
-                    'cheque_no'       => $row['cheque_no'],
-                    'received_date'   => $row['received_date'],
-                    'payment_status'  => $row['payment_status'],
-                    'renewal_status'  => $row['renewal_status'],
-                    'notes'           => $row['notes'],
-                ]);
-
-                $scholarship->installments()->create([
-                    'installment_no' => 1,
-                    'amount'         => $row['approved_amount'],
-                    'cheque_no'      => $row['cheque_no'],
-                    'received_date'  => $row['received_date'],
-                    'status'         => ($row['cheque_no'] && $row['received_date']) ? 'received'
-                                    : ($row['payment_status'] === 'paid' ? 'received' : 'pending'),
-                ]);
-
-                $scholarship->syncPaymentStatus();
-
-                $imported++;
             }
 
             ImportBatch::create([
@@ -241,10 +313,14 @@ class BulkImportController extends Controller
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            throw $e;
+            Log::error('Sheet commit failed: ' . $e->getMessage());
+            return response()->json(['message' => 'Import failed: ' . $e->getMessage()], 500);
         }
     }
 
+    // ============================================================
+    // HELPERS
+    // ============================================================
     private function sheetContext(Request $request): array
     {
         $request->validate([
@@ -340,13 +416,13 @@ class BulkImportController extends Controller
     {
         $get = fn ($key) => isset($colMap[$key]) ? trim((string) ($raw[$colMap[$key]] ?? '')) : '';
 
-        $amount = $this->parseAmount($get('approved_amount'));
+        $amount       = $this->parseAmount($get('approved_amount'));
         $receivedDate = $this->parseDate($get('received_date'));
-        $chequeNo = $get('cheque_no') ?: null;
+        $chequeNo     = $get('cheque_no') ?: null;
 
         if ($receivedDate && $chequeNo) $paymentStatus = 'paid';
-        elseif ($chequeNo) $paymentStatus = 'partial';
-        else $paymentStatus = 'pending';
+        elseif ($chequeNo)              $paymentStatus = 'partial';
+        else                            $paymentStatus = 'pending';
 
         if ($context['category'] === 'fresh') $renewalStatus = 'not_due';
         else $renewalStatus = $paymentStatus === 'paid' ? 'approved' : 'submitted';
@@ -395,15 +471,16 @@ class BulkImportController extends Controller
         catch (\Throwable $e) { return null; }
     }
 
-    // ---------------- Full 13-column parsing ----------------
-
     private function parseCsv($file): array
     {
         $handle = fopen($file->getRealPath(), 'r');
         if (!$handle) return ['columns' => [], 'rows' => [], 'errors' => ['Cannot open file.']];
 
         $header = fgetcsv($handle);
-        if (!$header) { fclose($handle); return ['columns' => [], 'rows' => [], 'errors' => ['Empty file.']]; }
+        if (!$header) {
+            fclose($handle);
+            return ['columns' => [], 'rows' => [], 'errors' => ['Empty file.']];
+        }
 
         $header = array_map(fn ($h) => strtolower(trim($h)), $header);
         $missing = array_diff(self::COLUMNS, $header);
@@ -445,6 +522,7 @@ class BulkImportController extends Controller
             'academic_year'   => trim($row['academic_year'] ?? ''),
             'donor'           => trim($row['donor'] ?? ''),
             'funding_group'   => trim($row['funding_group'] ?? '') ?: null,
+            'department'      => trim($row['department'] ?? '') ?: null,
             'approved_amount' => trim($row['approved_amount'] ?? ''),
             'cheque_no'       => trim($row['cheque_no'] ?? '') ?: null,
             'received_date'   => trim($row['received_date'] ?? '') ?: null,
