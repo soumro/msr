@@ -39,7 +39,6 @@ export default function YearEndReport() {
         queryKey: ["dashboard"],
         queryFn: fetchDashboard,
     });
-
     const currentFy = dashCtx?.current_fiscal_year ?? "";
 
     useEffect(() => {
@@ -50,12 +49,7 @@ export default function YearEndReport() {
         queryKey: ["report-meta", year],
         queryFn: () => fetchYearEndReport(year || undefined),
     });
-
     const years = meta?.years ?? [];
-
-    // ... rest unchanged
-
-    // ... rest of the component unchanged ...
 
     const exportMasterWorkbook = async () => {
         try {
@@ -67,21 +61,6 @@ export default function YearEndReport() {
                 fetchReportStudentDetail(year ? { academic_year: year } : {}),
             ]);
 
-            // ── Guard against missing data ──
-            const studentRows = Array.isArray(students?.data)
-                ? students.data
-                : [];
-            const studentTotal = students?.grand_total?.amount ?? 0;
-
-            if (studentRows.length === 0 && !students?.data) {
-                // The endpoint returned an error or bad shape — surface it instead of crashing
-                console.error("fetchReportStudentDetail returned:", students);
-                toast.error(
-                    "Could not fetch student details. Check console (F12) for details.",
-                );
-                return;
-            }
-
             const sheets = [
                 {
                     name: "Summary",
@@ -89,23 +68,26 @@ export default function YearEndReport() {
                         "S.No",
                         "Name of Donor",
                         "Name of Scholarship",
-                        "Number of Slots",
-                        "Amount PKRs",
+                        "Slots",
+                        "Approved",
+                        "Received",
                     ],
                     rows: [
-                        ...(summary?.rows ?? []).map((r, i) => [
+                        ...(summary.rows ?? []).map((r, i) => [
                             i + 1,
                             r.donor,
                             r.scheme,
                             r.slots,
-                            r.amount,
+                            r.approved,
+                            r.received,
                         ]),
                         [
                             "",
-                            "Total Amount",
+                            "TOTAL",
                             "",
-                            summary?.grand_total?.slots ?? 0,
-                            summary?.grand_total?.amount ?? 0,
+                            summary.grand_total.slots,
+                            summary.grand_total.approved,
+                            summary.grand_total.received,
                         ],
                     ],
                 },
@@ -114,24 +96,24 @@ export default function YearEndReport() {
                     headers: [
                         "Department",
                         "Students",
-                        "Scholarships",
-                        "Total Amount",
+                        "Slots",
+                        "Approved",
+                        "Received",
                     ],
                     rows: [
-                        ...(dept?.groups ?? []).map((g) => [
+                        ...(dept.groups ?? []).map((g) => [
                             g.department,
                             g.students,
-                            g.total_slots,
-                            g.total_amount,
+                            g.slots,
+                            g.approved,
+                            g.received,
                         ]),
                         [
                             "TOTAL",
-                            (dept?.groups ?? []).reduce(
-                                (s, g) => s + g.students,
-                                0,
-                            ),
-                            dept?.grand_total?.slots ?? 0,
-                            dept?.grand_total?.amount ?? 0,
+                            dept.grand_total.students,
+                            dept.grand_total.slots,
+                            dept.grand_total.approved,
+                            dept.grand_total.received,
                         ],
                     ],
                 },
@@ -140,50 +122,50 @@ export default function YearEndReport() {
                     headers: [
                         "Donor",
                         "Students",
-                        "Scholarships",
-                        "Total Amount",
+                        "Slots",
+                        "Approved",
+                        "Received",
                     ],
                     rows: [
-                        ...(donor?.groups ?? []).map((g) => [
+                        ...(donor.groups ?? []).map((g) => [
                             g.donor,
                             g.students,
-                            g.total_slots,
-                            g.total_amount,
+                            g.slots,
+                            g.approved,
+                            g.received,
                         ]),
                         [
                             "TOTAL",
-                            (donor?.groups ?? []).reduce(
-                                (s, g) => s + g.students,
-                                0,
-                            ),
-                            donor?.grand_total?.slots ?? 0,
-                            donor?.grand_total?.amount ?? 0,
+                            donor.grand_total.students,
+                            donor.grand_total.slots,
+                            donor.grand_total.approved,
+                            donor.grand_total.received,
                         ],
                     ],
                 },
                 {
                     name: "By Year",
                     headers: [
-                        "Academic Year",
+                        "Fiscal Year",
                         "Students",
-                        "Scholarships",
-                        "Total Amount",
+                        "Records",
+                        "Approved",
+                        "Received",
                     ],
                     rows: [
-                        ...(years_?.groups ?? []).map((g) => [
+                        ...(years_.groups ?? []).map((g) => [
                             g.academic_year,
                             g.students,
-                            g.total_slots,
-                            g.total_amount,
+                            g.records,
+                            g.approved,
+                            g.received,
                         ]),
                         [
                             "TOTAL",
-                            (years_?.groups ?? []).reduce(
-                                (s, g) => s + g.students,
-                                0,
-                            ),
-                            years_?.grand_total?.slots ?? 0,
-                            years_?.grand_total?.amount ?? 0,
+                            years_.grand_total.students,
+                            years_.grand_total.records,
+                            years_.grand_total.approved,
+                            years_.grand_total.received,
                         ],
                     ],
                 },
@@ -191,30 +173,30 @@ export default function YearEndReport() {
                     name: "All Students",
                     headers: [
                         "S.No",
-                        "Name of Student",
                         "Roll No.",
-                        "Cheque No",
-                        "Dated",
-                        "Stipend",
-                        "Remarks",
+                        "Name",
                         "Scheme",
                         "Donor",
                         "Department",
                         "Year",
+                        "Approved",
+                        "Received",
+                        "Status",
+                        "Notes",
                     ],
                     rows: [
-                        ...studentRows.map((r, i) => [
+                        ...(students.data ?? []).map((r, i) => [
                             i + 1,
+                            r.student_id,
                             r.student_name ?? "",
-                            r.student_id ?? "",
-                            r.cheque_no ?? "",
-                            r.received_date ?? "",
-                            r.approved_amount ?? 0,
-                            r.notes ?? "",
-                            r.scheme ?? "",
-                            r.donor ?? "",
+                            r.scheme,
+                            r.donor,
                             r.department ?? "",
-                            r.academic_year ?? "",
+                            r.academic_year,
+                            r.approved_amount,
+                            r.received_amount,
+                            r.payment_status,
+                            r.notes ?? "",
                         ]),
                         [
                             "",
@@ -222,14 +204,71 @@ export default function YearEndReport() {
                             "",
                             "",
                             "",
-                            studentTotal,
                             "",
                             "",
-                            "",
+                            students.grand_total.approved,
+                            students.grand_total.received,
                             "",
                             "",
                         ],
                     ],
+                },
+                {
+                    name: "Installments by FY",
+                    headers: [
+                        "S.No",
+                        "Roll No.",
+                        "Name",
+                        "Scheme",
+                        "Installment #",
+                        "Amount",
+                        "Cheque",
+                        "Dated",
+                        "Fiscal Year",
+                        "Status",
+                    ],
+                    rows: (() => {
+                        const out = [];
+                        let i = 1;
+                        (students.data ?? []).forEach((r) => {
+                            (r.installments ?? []).forEach((ins) => {
+                                out.push([
+                                    i++,
+                                    r.student_id,
+                                    r.student_name ?? "",
+                                    r.scheme,
+                                    ins.installment_no,
+                                    ins.amount,
+                                    ins.cheque_no ?? "",
+                                    ins.received_date ?? "",
+                                    ins.fiscal_year ?? "",
+                                    ins.status,
+                                ]);
+                            });
+                        });
+                        const total = (students.data ?? []).reduce(
+                            (s, r) =>
+                                s +
+                                (r.installments ?? []).reduce(
+                                    (ss, i2) => ss + Number(i2.amount),
+                                    0,
+                                ),
+                            0,
+                        );
+                        out.push([
+                            "",
+                            "TOTAL",
+                            "",
+                            "",
+                            "",
+                            total,
+                            "",
+                            "",
+                            "",
+                            "",
+                        ]);
+                        return out;
+                    })(),
                 },
             ];
 
@@ -239,12 +278,10 @@ export default function YearEndReport() {
                 ),
                 sheets,
             );
-            toast.success(
-                `Master workbook — 5 sheets · ${studentRows.length} students`,
-            );
+            toast.success("Master workbook — 6 sheets");
         } catch (err) {
-            console.error("exportMasterWorkbook failed:", err);
-            toast.error("Export failed — check console (F12)");
+            console.error(err);
+            toast.error("Export failed");
         }
     };
 
@@ -254,8 +291,8 @@ export default function YearEndReport() {
                 <div className="px-5 py-4 border-b">
                     <h2 className="font-semibold">Reports</h2>
                     <p className="text-xs text-slate-500 mt-0.5">
-                        Every tab has Excel export. Year/Dept/Donor tabs: click
-                        a row to see the students.
+                        Approved = scholarship commitments. Received =
+                        installments landed within fiscal year (Jul–Jun).
                     </p>
                 </div>
 
@@ -310,9 +347,7 @@ export default function YearEndReport() {
             {tab === "grouped" && <GroupedView year={year} />}
             {tab === "summary" && <SummaryView year={year} />}
             {tab === "student" && <StudentView year={year} />}
-            {tab === "year" && (
-                <YearView year={year} onViewStudents={setModal} />
-            )}
+            {tab === "year" && <YearView />}
             {tab === "department" && (
                 <DepartmentView year={year} onViewStudents={setModal} />
             )}
@@ -332,68 +367,7 @@ export default function YearEndReport() {
     );
 }
 
-// =============================================================
-// Shared Excel helper — downloads student list for any filter
-// =============================================================
-async function downloadStudentsExcel(filters, filename, toast) {
-    try {
-        const data = await fetchReportStudentDetail(filters);
-        const headers = [
-            "S.No",
-            "Name of the Student",
-            "Roll No.",
-            "Cheque No",
-            "Dated",
-            "Scholarship Stipend",
-            "Remarks",
-            "Scheme",
-            "Donor",
-            "Department",
-            "Year",
-        ];
-        const rows = data.data.map((r, i) => [
-            i + 1,
-            r.student_name ?? "",
-            r.student_id ?? "",
-            r.cheque_no ?? "",
-            r.received_date ?? "",
-            r.approved_amount,
-            r.notes ?? "",
-            r.scheme ?? "",
-            r.donor ?? "",
-            r.department ?? "",
-            r.academic_year ?? "",
-        ]);
-        rows.push([
-            "",
-            "TOTAL",
-            "",
-            "",
-            "",
-            data.grand_total.amount,
-            "",
-            "",
-            "",
-            "",
-            "",
-        ]);
-
-        downloadExcel(
-            safeFilename(
-                `${filename}-${new Date().toISOString().slice(0, 10)}.xlsx`,
-            ),
-            [{ name: "Students", headers, rows }],
-        );
-        toast.success(`${data.data.length} students downloaded`);
-    } catch (err) {
-        console.error(err);
-        toast.error("Download failed");
-    }
-}
-
-// =============================================================
-// GROUPED — unchanged
-// =============================================================
+// ── GROUPED ──
 function GroupedView({ year }) {
     const { data, isLoading } = useQuery({
         queryKey: ["report-grouped", year],
@@ -411,19 +385,16 @@ function GroupedView({ year }) {
                 <thead>
                     <tr className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wide">
                         <th className="text-left px-4 py-2 w-14">S.No</th>
-                        <th className="text-left px-4 py-2">Name of Donor</th>
-                        <th className="text-left px-4 py-2">
-                            Name of Scholarship
-                        </th>
-                        <th className="text-right px-4 py-2 w-28">Slots</th>
-                        <th className="text-right px-4 py-2 w-36">
-                            Amount (PKR)
-                        </th>
+                        <th className="text-left px-4 py-2">Donor</th>
+                        <th className="text-left px-4 py-2">Scholarship</th>
+                        <th className="text-right px-4 py-2">Slots</th>
+                        <th className="text-right px-4 py-2">Approved</th>
+                        <th className="text-right px-4 py-2">Received</th>
                     </tr>
                 </thead>
                 <tbody>
                     {data.groups.map((g) => (
-                        <GroupBlock
+                        <GroupRows
                             key={g.funding_group}
                             group={g}
                             counterRef={() => ++counter}
@@ -431,15 +402,18 @@ function GroupedView({ year }) {
                     ))}
                 </tbody>
                 <tfoot>
-                    <tr className="bg-purple-900 text-white font-bold text-sm">
+                    <tr className="bg-purple-900 text-white font-bold">
                         <td colSpan={3} className="px-4 py-3 text-right">
                             GRAND TOTAL
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums">
+                        <td className="px-4 py-3 text-right">
                             {fmt(data.grand_total.slots)}
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums">
-                            {fmt(data.grand_total.amount)}
+                        <td className="px-4 py-3 text-right">
+                            {fmt(data.grand_total.approved)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-emerald-300">
+                            {fmt(data.grand_total.received)}
                         </td>
                     </tr>
                 </tfoot>
@@ -448,14 +422,11 @@ function GroupedView({ year }) {
     );
 }
 
-function GroupBlock({ group, counterRef }) {
+function GroupRows({ group, counterRef }) {
     return (
         <>
             <tr className="bg-purple-50 border-t-2 border-purple-200">
-                <td
-                    colSpan={5}
-                    className="px-4 py-2 font-bold text-purple-900 text-sm"
-                >
+                <td colSpan={6} className="px-4 py-2 font-bold text-purple-900">
                     {group.funding_group}
                 </td>
             </tr>
@@ -466,11 +437,10 @@ function GroupBlock({ group, counterRef }) {
                     </td>
                     <td className="px-4 py-2">{r.donor}</td>
                     <td className="px-4 py-2">{r.scheme}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                        {r.slots}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                        {fmt(r.amount)}
+                    <td className="px-4 py-2 text-right">{r.slots}</td>
+                    <td className="px-4 py-2 text-right">{fmt(r.approved)}</td>
+                    <td className="px-4 py-2 text-right text-emerald-700">
+                        {fmt(r.received)}
                     </td>
                 </tr>
             ))}
@@ -478,20 +448,19 @@ function GroupBlock({ group, counterRef }) {
                 <td colSpan={3} className="px-4 py-2 text-right text-slate-700">
                     Subtotal — {group.funding_group}
                 </td>
-                <td className="px-4 py-2 text-right tabular-nums">
-                    {group.subtotal.slots}
+                <td className="px-4 py-2 text-right">{group.subtotal.slots}</td>
+                <td className="px-4 py-2 text-right">
+                    {fmt(group.subtotal.approved)}
                 </td>
-                <td className="px-4 py-2 text-right tabular-nums">
-                    {fmt(group.subtotal.amount)}
+                <td className="px-4 py-2 text-right text-emerald-700">
+                    {fmt(group.subtotal.received)}
                 </td>
             </tr>
         </>
     );
 }
 
-// =============================================================
-// SUMMARY — unchanged
-// =============================================================
+// ── SUMMARY ──
 function SummaryView({ year }) {
     const toast = useToast();
     const { data, isLoading } = useQuery({
@@ -510,10 +479,11 @@ function SummaryView({ year }) {
                     name: "Summary",
                     headers: [
                         "S.No",
-                        "Name of Donor",
-                        "Name of Scholarship",
-                        "Number of Slots",
-                        "Amount PKRs",
+                        "Donor",
+                        "Scholarship",
+                        "Slots",
+                        "Approved",
+                        "Received",
                     ],
                     rows: [
                         ...data.rows.map((r, i) => [
@@ -521,20 +491,22 @@ function SummaryView({ year }) {
                             r.donor,
                             r.scheme,
                             r.slots,
-                            r.amount,
+                            r.approved,
+                            r.received,
                         ]),
                         [
                             "",
-                            "Total Amount",
+                            "TOTAL",
                             "",
                             data.grand_total.slots,
-                            data.grand_total.amount,
+                            data.grand_total.approved,
+                            data.grand_total.received,
                         ],
                     ],
                 },
             ],
         );
-        toast.success("Summary downloaded");
+        toast.success("Summary exported");
     };
 
     return (
@@ -542,31 +514,23 @@ function SummaryView({ year }) {
             <div className="px-5 py-2 bg-white border-b flex justify-end">
                 <button
                     onClick={exportSummary}
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-1.5 rounded-lg text-xs font-semibold"
+                    className="bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold"
                 >
                     ⬇ Export Summary (.xlsx)
                 </button>
             </div>
-
             <ReportCard
                 title={`Scholarship Summary${year ? " — " + year : " — All Years"}`}
             >
                 <table className="w-full text-sm">
-                    <thead>
-                        <tr className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wide">
-                            <th className="text-left px-4 py-2 w-14">S.No</th>
-                            <th className="text-left px-4 py-2">
-                                Name of Donor
-                            </th>
-                            <th className="text-left px-4 py-2">
-                                Name of Scholarship
-                            </th>
-                            <th className="text-right px-4 py-2 w-32">
-                                Number of Slots
-                            </th>
-                            <th className="text-right px-4 py-2 w-40">
-                                Amount PKRs.
-                            </th>
+                    <thead className="bg-slate-100 text-slate-700 text-[11px] uppercase">
+                        <tr>
+                            <th className="text-left px-4 py-2">S.No</th>
+                            <th className="text-left px-4 py-2">Donor</th>
+                            <th className="text-left px-4 py-2">Scholarship</th>
+                            <th className="text-right px-4 py-2">Slots</th>
+                            <th className="text-right px-4 py-2">Approved</th>
+                            <th className="text-right px-4 py-2">Received</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -575,30 +539,36 @@ function SummaryView({ year }) {
                                 key={`${r.donor}-${r.scheme}`}
                                 className="border-t hover:bg-purple-50/40"
                             >
-                                <td className="px-4 py-2 text-slate-500 text-xs">
+                                <td className="px-4 py-2 text-xs text-slate-500">
                                     {i + 1}
                                 </td>
                                 <td className="px-4 py-2">{r.donor}</td>
                                 <td className="px-4 py-2">{r.scheme}</td>
-                                <td className="px-4 py-2 text-right tabular-nums">
+                                <td className="px-4 py-2 text-right">
                                     {r.slots}
                                 </td>
-                                <td className="px-4 py-2 text-right tabular-nums">
-                                    {fmt(r.amount)}
+                                <td className="px-4 py-2 text-right">
+                                    {fmt(r.approved)}
+                                </td>
+                                <td className="px-4 py-2 text-right text-emerald-700">
+                                    {fmt(r.received)}
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                     <tfoot>
-                        <tr className="bg-purple-900 text-white font-bold text-sm">
+                        <tr className="bg-purple-900 text-white font-bold">
                             <td colSpan={3} className="px-4 py-3 text-right">
-                                Total Amount
+                                TOTAL
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums">
+                            <td className="px-4 py-3 text-right">
                                 {fmt(data.grand_total.slots)}
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums">
-                                {fmt(data.grand_total.amount)}
+                            <td className="px-4 py-3 text-right">
+                                {fmt(data.grand_total.approved)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-emerald-300">
+                                {fmt(data.grand_total.received)}
                             </td>
                         </tr>
                     </tfoot>
@@ -608,10 +578,9 @@ function SummaryView({ year }) {
     );
 }
 
-// =============================================================
-// STUDENT-WISE — unchanged
-// =============================================================
+// ── STUDENT-WISE ──
 function StudentView({ year }) {
+    const toast = useToast();
     const { data, isLoading } = useQuery({
         queryKey: ["report-student", year],
         queryFn: () => fetchReportStudentWise(year || undefined),
@@ -621,49 +590,111 @@ function StudentView({ year }) {
     if (isLoading) return <Loading />;
     if (!data?.groups?.length) return <Empty message="No students." />;
 
+    const exportAll = () => {
+        const headers = [
+            "S.No",
+            "Roll No.",
+            "Name",
+            "Scheme",
+            "Year",
+            "Donor",
+            "Approved",
+            "Received",
+            "Status",
+        ];
+        const rows = [];
+        let i = 1;
+        data.groups.forEach((g) => {
+            g.records.forEach((r) => {
+                rows.push([
+                    i++,
+                    r.student_id,
+                    g.student_name ?? "",
+                    r.scheme,
+                    r.academic_year,
+                    r.donor,
+                    r.approved_amount,
+                    r.received_amount,
+                    r.payment_status,
+                ]);
+            });
+        });
+        rows.push([
+            "",
+            "TOTAL",
+            "",
+            "",
+            "",
+            "",
+            data.grand_total.approved,
+            data.grand_total.received,
+            "",
+        ]);
+        downloadExcel(safeFilename(`students-${year || "all"}.xlsx`), [
+            { name: "Students", headers, rows },
+        ]);
+        toast.success(`Exported ${i - 1} rows`);
+    };
+
     return (
-        <ReportCard title={`Student-wise Report${year ? " — " + year : ""}`}>
-            <table className="w-full text-sm">
-                <thead>
-                    <tr className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wide">
-                        <th className="text-left px-3 py-2 w-12">#</th>
-                        <th className="text-left px-3 py-2">Student</th>
-                        <th className="text-left px-3 py-2">Roll No.</th>
-                        <th className="text-left px-3 py-2">Department</th>
-                        <th className="text-left px-3 py-2">Scheme(s)</th>{" "}
-                        <th className="text-right px-3 py-2">Total</th>
-                        <th className="w-8"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {data.groups.map((g, i) => (
-                        <StudentRow
-                            key={g.student_id}
-                            group={g}
-                            index={i}
-                            expanded={expanded === i}
-                            onToggle={() =>
-                                setExpanded(expanded === i ? null : i)
-                            }
-                        />
-                    ))}
-                </tbody>
-                <tfoot>
-                    <tr className="bg-purple-900 text-white font-bold text-sm">
-                        <td colSpan={4} className="px-3 py-3 text-right">
-                            GRAND TOTAL — {data.grand_total.students} student(s)
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums">
-                            {fmt(data.grand_total.slots)}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums">
-                            {fmt(data.grand_total.amount)}
-                        </td>
-                        <td></td>
-                    </tr>
-                </tfoot>
-            </table>
-        </ReportCard>
+        <>
+            <div className="px-5 py-2 bg-white border-b flex justify-end">
+                <button
+                    onClick={exportAll}
+                    className="bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold"
+                >
+                    ⬇ Export (.xlsx)
+                </button>
+            </div>
+            <ReportCard
+                title={`Student-wise Report${year ? " — " + year : ""}`}
+            >
+                <table className="w-full text-sm">
+                    <thead className="bg-slate-100 text-slate-700 text-[11px] uppercase">
+                        <tr>
+                            <th className="text-left px-3 py-2 w-12">#</th>
+                            <th className="text-left px-3 py-2">Student</th>
+                            <th className="text-left px-3 py-2">Roll</th>
+                            <th className="text-left px-3 py-2">Dept</th>
+                            <th className="text-right px-3 py-2">Records</th>
+                            <th className="text-right px-3 py-2">Approved</th>
+                            <th className="text-right px-3 py-2">Received</th>
+                            <th className="w-8"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {data.groups.map((g, i) => (
+                            <StudentRow
+                                key={g.student_id || i}
+                                group={g}
+                                index={i}
+                                expanded={expanded === i}
+                                onToggle={() =>
+                                    setExpanded(expanded === i ? null : i)
+                                }
+                            />
+                        ))}
+                    </tbody>
+                    <tfoot>
+                        <tr className="bg-purple-900 text-white font-bold">
+                            <td colSpan={4} className="px-3 py-3 text-right">
+                                TOTAL — {data.grand_total.students} student(s)
+                            </td>
+                            <td className="px-3 py-3 text-right">
+                                {fmt(data.grand_total.slots)}
+                            </td>
+                            <td className="px-3 py-3 text-right">
+                                {fmt(data.grand_total.approved)}
+                            </td>
+                            <td className="px-3 py-3 text-right text-emerald-300">
+                                {fmt(data.grand_total.received)}
+                            </td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </ReportCard>
+        </>
     );
 }
 
@@ -684,56 +715,35 @@ function StudentRow({ group: g, index, expanded, onToggle }) {
                     {g.student_id || "—"}
                 </td>
                 <td className="px-3 py-2 text-xs">{g.department || "—"}</td>
-                <td className="px-3 py-2 text-xs">
-                    {(() => {
-                        const schemes = [
-                            ...new Set(
-                                (g.records || [])
-                                    .map((r) => r.scheme)
-                                    .filter(Boolean),
-                            ),
-                        ];
-                        if (schemes.length === 0)
-                            return <span className="text-slate-400">—</span>;
-                        return (
-                            <div className="flex flex-wrap gap-1">
-                                {schemes.map((s) => (
-                                    <span
-                                        key={s}
-                                        className="inline-block bg-purple-100 text-purple-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                                    >
-                                        {s}
-                                    </span>
-                                ))}
-                                {g.records.length > schemes.length && (
-                                    <span className="inline-block bg-slate-200 text-slate-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                                        {g.records.length} records
-                                    </span>
-                                )}
-                            </div>
-                        );
-                    })()}
+                <td className="px-3 py-2 text-right">{g.total_slots}</td>
+                <td className="px-3 py-2 text-right">
+                    {fmt(g.total_approved)}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                    {fmt(g.total_amount)}
+                <td className="px-3 py-2 text-right text-emerald-700 font-semibold">
+                    {fmt(g.total_received)}
                 </td>
-                <td className="px-3 py-2 text-center text-purple-700 font-semibold text-xs">
+                <td className="px-3 py-2 text-center text-purple-700 text-xs">
                     {expanded ? "▲" : "▼"}
                 </td>
             </tr>
             {expanded && (
                 <tr>
-                    <td colSpan={7} className="bg-slate-50 px-6 py-3">
+                    <td colSpan={8} className="bg-slate-50 px-6 py-3">
                         <table className="w-full text-xs">
                             <thead>
                                 <tr className="text-slate-500 uppercase">
                                     <th className="text-left py-1">Scheme</th>
                                     <th className="text-left py-1">Year</th>
                                     <th className="text-left py-1">Donor</th>
-                                    <th className="text-left py-1">Cheque</th>
-                                    <th className="text-left py-1">Dated</th>
-                                    <th className="text-right py-1">Stipend</th>
-                                    <th className="text-left py-1">Remarks</th>
+                                    <th className="text-right py-1">
+                                        Approved
+                                    </th>
+                                    <th className="text-right py-1">
+                                        Received
+                                    </th>
+                                    <th className="text-left py-1">
+                                        Installments
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -747,17 +757,35 @@ function StudentRow({ group: g, index, expanded, onToggle }) {
                                             {r.academic_year}
                                         </td>
                                         <td className="py-1">{r.donor}</td>
-                                        <td className="py-1 font-mono">
-                                            {r.cheque_no || "—"}
-                                        </td>
-                                        <td className="py-1">
-                                            {r.received_date || "—"}
-                                        </td>
-                                        <td className="py-1 text-right tabular-nums">
+                                        <td className="py-1 text-right">
                                             {fmt(r.approved_amount)}
                                         </td>
-                                        <td className="py-1 text-slate-600 max-w-[200px] truncate">
-                                            {r.notes || "—"}
+                                        <td className="py-1 text-right text-emerald-700">
+                                            {fmt(r.received_amount)}
+                                        </td>
+                                        <td className="py-1">
+                                            {(r.installments ?? []).map(
+                                                (ins) => (
+                                                    <div
+                                                        key={ins.installment_no}
+                                                        className="text-[11px] text-slate-600"
+                                                    >
+                                                        #{ins.installment_no} —{" "}
+                                                        {fmt(ins.amount)} —{" "}
+                                                        {ins.received_date ||
+                                                            "pending"}
+                                                        {ins.fiscal_year && (
+                                                            <span className="ml-1 text-purple-700">
+                                                                (
+                                                                {
+                                                                    ins.fiscal_year
+                                                                }
+                                                                )
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ),
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
@@ -770,10 +798,8 @@ function StudentRow({ group: g, index, expanded, onToggle }) {
     );
 }
 
-// =============================================================
-// YEAR-WISE — NEW: view/download students per year
-// =============================================================
-function YearView({ year, onViewStudents }) {
+// ── YEAR-WISE ──
+function YearView() {
     const toast = useToast();
     const { data, isLoading } = useQuery({
         queryKey: ["report-year"],
@@ -783,109 +809,111 @@ function YearView({ year, onViewStudents }) {
     if (isLoading) return <Loading />;
     if (!data?.groups?.length) return <Empty message="No records." />;
 
+    const exportYear = () => {
+        downloadExcel(
+            safeFilename(
+                `year-wise-${new Date().toISOString().slice(0, 10)}.xlsx`,
+            ),
+            [
+                {
+                    name: "By Year",
+                    headers: [
+                        "Fiscal Year",
+                        "Students",
+                        "Records",
+                        "Approved",
+                        "Received",
+                    ],
+                    rows: [
+                        ...data.groups.map((g) => [
+                            g.academic_year,
+                            g.students,
+                            g.records,
+                            g.approved,
+                            g.received,
+                        ]),
+                        [
+                            "TOTAL",
+                            data.grand_total.students,
+                            data.grand_total.records,
+                            data.grand_total.approved,
+                            data.grand_total.received,
+                        ],
+                    ],
+                },
+            ],
+        );
+        toast.success("Exported");
+    };
+
     return (
         <>
-            <div className="px-5 py-2 bg-white border-b flex justify-end gap-2">
+            <div className="px-5 py-2 bg-white border-b flex justify-end">
                 <button
-                    onClick={() =>
-                        downloadStudentsExcel(
-                            year ? { academic_year: year } : {},
-                            `students-allyears-${year || "all"}`,
-                            toast,
-                        )
-                    }
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-1.5 rounded-lg text-xs font-semibold"
+                    onClick={exportYear}
+                    className="bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold"
                 >
-                    ⬇ Download All Students ({year || "All Years"})
+                    ⬇ Export (.xlsx)
                 </button>
             </div>
-
             <ReportCard
                 title="Year-wise Report"
-                subtitle="Click a row to view and download that year's students."
+                subtitle="Approved = commitments by year. Received = installments landed in that fiscal year."
             >
                 <table className="w-full text-sm">
-                    <thead>
-                        <tr className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wide">
-                            <th className="text-left px-3 py-2">
-                                Academic Year
-                            </th>
+                    <thead className="bg-slate-100 text-slate-700 text-[11px] uppercase">
+                        <tr>
+                            <th className="text-left px-3 py-2">Fiscal Year</th>
                             <th className="text-right px-3 py-2">Students</th>
-                            <th className="text-right px-3 py-2">
-                                Scholarships
-                            </th>
-                            <th className="text-right px-3 py-2">
-                                Total Amount
-                            </th>
-                            <th className="text-center px-3 py-2 w-48">
-                                Students
-                            </th>
+                            <th className="text-right px-3 py-2">Records</th>
+                            <th className="text-right px-3 py-2">Approved</th>
+                            <th className="text-right px-3 py-2">Received</th>
                         </tr>
                     </thead>
                     <tbody>
                         {data.groups.map((g) => (
                             <tr
                                 key={g.academic_year}
-                                className="border-t hover:bg-purple-50/40 cursor-pointer"
-                                onClick={() =>
-                                    onViewStudents({
-                                        title: `Students — ${g.academic_year}`,
-                                        filters: {
-                                            academic_year: g.academic_year,
-                                        },
-                                    })
-                                }
+                                className={`border-t hover:bg-purple-50/40 ${g.is_current ? "bg-purple-50" : ""}`}
                             >
-                                <td className="px-3 py-2 font-semibold">
+                                <td className="px-3 py-2 font-semibold whitespace-nowrap">
                                     {g.academic_year}
+                                    {g.is_current && (
+                                        <span className="ml-2 text-[9px] font-bold bg-purple-600 text-white px-1.5 py-0.5 rounded-full">
+                                            CURRENT
+                                        </span>
+                                    )}
                                 </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
+                                <td className="px-3 py-2 text-right">
                                     {g.students}
                                 </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                    {g.total_slots}
+                                <td className="px-3 py-2 text-right">
+                                    {g.records}
                                 </td>
-                                <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                                    {fmt(g.total_amount)}
+                                <td className="px-3 py-2 text-right font-bold text-purple-800">
+                                    {fmt(g.approved)}
                                 </td>
-                                <td className="px-3 py-2 text-center">
-                                    <button
-                                        className="text-purple-700 text-xs font-semibold hover:underline"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onViewStudents({
-                                                title: `Students — ${g.academic_year}`,
-                                                filters: {
-                                                    academic_year:
-                                                        g.academic_year,
-                                                },
-                                            });
-                                        }}
-                                    >
-                                        View & Download →
-                                    </button>
+                                <td className="px-3 py-2 text-right font-bold text-emerald-700">
+                                    {fmt(g.received)}
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                     <tfoot>
-                        <tr className="bg-purple-900 text-white font-bold text-sm">
+                        <tr className="bg-purple-900 text-white font-bold">
+                            <td className="px-3 py-3 text-right">TOTAL</td>
                             <td className="px-3 py-3 text-right">
-                                GRAND TOTAL
+                                {data.grand_total.students}
                             </td>
-                            <td className="px-3 py-3 text-right tabular-nums">
-                                {data.groups.reduce(
-                                    (s, x) => s + x.students,
-                                    0,
-                                )}
+                            <td className="px-3 py-3 text-right">
+                                {data.grand_total.records}
                             </td>
-                            <td className="px-3 py-3 text-right tabular-nums">
-                                {data.grand_total.slots}
+                            <td className="px-3 py-3 text-right">
+                                {fmt(data.grand_total.approved)}
                             </td>
-                            <td className="px-3 py-3 text-right tabular-nums">
-                                {fmt(data.grand_total.amount)}
+                            <td className="px-3 py-3 text-right text-emerald-300">
+                                {fmt(data.grand_total.received)}
                             </td>
-                            <td></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -894,9 +922,7 @@ function YearView({ year, onViewStudents }) {
     );
 }
 
-// =============================================================
-// DEPARTMENT-WISE — NEW: view/download students per department
-// =============================================================
+// ── DEPARTMENT-WISE ──
 function DepartmentView({ year, onViewStudents }) {
     const toast = useToast();
     const { data, isLoading } = useQuery({
@@ -906,45 +932,63 @@ function DepartmentView({ year, onViewStudents }) {
 
     if (isLoading) return <Loading />;
     if (!data?.groups?.length)
-        return (
-            <Empty message="No records with department info. Add a Department field to each scholarship in Master Register." />
-        );
+        return <Empty message="No records with department info." />;
+
+    const exportDept = () => {
+        downloadExcel(safeFilename(`department-wise-${year || "all"}.xlsx`), [
+            {
+                name: "By Department",
+                headers: [
+                    "Department",
+                    "Students",
+                    "Slots",
+                    "Approved",
+                    "Received",
+                ],
+                rows: [
+                    ...data.groups.map((g) => [
+                        g.department,
+                        g.students,
+                        g.slots,
+                        g.approved,
+                        g.received,
+                    ]),
+                    [
+                        "TOTAL",
+                        data.grand_total.students,
+                        data.grand_total.slots,
+                        data.grand_total.approved,
+                        data.grand_total.received,
+                    ],
+                ],
+            },
+        ]);
+        toast.success("Exported");
+    };
 
     return (
         <>
             <div className="px-5 py-2 bg-white border-b flex justify-end">
                 <button
-                    onClick={() =>
-                        downloadStudentsExcel(
-                            year ? { academic_year: year } : {},
-                            `students-bydepartment-${year || "all"}`,
-                            toast,
-                        )
-                    }
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-1.5 rounded-lg text-xs font-semibold"
+                    onClick={exportDept}
+                    className="bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold"
                 >
-                    ⬇ Download All Students ({year || "All Years"})
+                    ⬇ Export (.xlsx)
                 </button>
             </div>
-
             <ReportCard
-                title={`Department-wise Report${year ? " — " + year : ""}`}
-                subtitle="Click a row to view and download that department's students."
+                title={`Department-wise${year ? " — " + year : ""}`}
+                subtitle="Click a row to view + download students."
             >
                 <table className="w-full text-sm">
-                    <thead>
-                        <tr className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wide">
+                    <thead className="bg-slate-100 text-slate-700 text-[11px] uppercase">
+                        <tr>
                             <th className="text-left px-3 py-2">Department</th>
                             <th className="text-right px-3 py-2">Students</th>
-                            <th className="text-right px-3 py-2">
-                                Scholarships
-                            </th>
-                            <th className="text-right px-3 py-2">
-                                Total Amount
-                            </th>
-                            <th className="text-center px-3 py-2 w-48">
-                                Students
-                            </th>
+                            <th className="text-right px-3 py-2">Slots</th>
+                            <th className="text-right px-3 py-2">Approved</th>
+                            <th className="text-right px-3 py-2">Received</th>
+                            <th className="text-center px-3 py-2">Students</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -968,14 +1012,17 @@ function DepartmentView({ year, onViewStudents }) {
                                 <td className="px-3 py-2 font-semibold">
                                     {g.department}
                                 </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
+                                <td className="px-3 py-2 text-right">
                                     {g.students}
                                 </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                    {g.total_slots}
+                                <td className="px-3 py-2 text-right">
+                                    {g.slots}
                                 </td>
-                                <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                                    {fmt(g.total_amount)}
+                                <td className="px-3 py-2 text-right font-semibold">
+                                    {fmt(g.approved)}
+                                </td>
+                                <td className="px-3 py-2 text-right font-semibold text-emerald-700">
+                                    {fmt(g.received)}
                                 </td>
                                 <td className="px-3 py-2 text-center">
                                     <button
@@ -996,28 +1043,26 @@ function DepartmentView({ year, onViewStudents }) {
                                             });
                                         }}
                                     >
-                                        View & Download →
+                                        View →
                                     </button>
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                     <tfoot>
-                        <tr className="bg-purple-900 text-white font-bold text-sm">
+                        <tr className="bg-purple-900 text-white font-bold">
+                            <td className="px-3 py-3 text-right">TOTAL</td>
                             <td className="px-3 py-3 text-right">
-                                GRAND TOTAL
+                                {data.grand_total.students}
                             </td>
-                            <td className="px-3 py-3 text-right tabular-nums">
-                                {data.groups.reduce(
-                                    (s, x) => s + x.students,
-                                    0,
-                                )}
-                            </td>
-                            <td className="px-3 py-3 text-right tabular-nums">
+                            <td className="px-3 py-3 text-right">
                                 {data.grand_total.slots}
                             </td>
-                            <td className="px-3 py-3 text-right tabular-nums">
-                                {fmt(data.grand_total.amount)}
+                            <td className="px-3 py-3 text-right">
+                                {fmt(data.grand_total.approved)}
+                            </td>
+                            <td className="px-3 py-3 text-right text-emerald-300">
+                                {fmt(data.grand_total.received)}
                             </td>
                             <td></td>
                         </tr>
@@ -1028,9 +1073,7 @@ function DepartmentView({ year, onViewStudents }) {
     );
 }
 
-// =============================================================
-// DONOR-WISE — NEW: view/download students per donor
-// =============================================================
+// ── DONOR-WISE ──
 function DonorView({ year, onViewStudents }) {
     const toast = useToast();
     const { data, isLoading } = useQuery({
@@ -1041,42 +1084,56 @@ function DonorView({ year, onViewStudents }) {
     if (isLoading) return <Loading />;
     if (!data?.groups?.length) return <Empty message="No records." />;
 
+    const exportDonor = () => {
+        downloadExcel(safeFilename(`donor-wise-${year || "all"}.xlsx`), [
+            {
+                name: "By Donor",
+                headers: ["Donor", "Students", "Slots", "Approved", "Received"],
+                rows: [
+                    ...data.groups.map((g) => [
+                        g.donor,
+                        g.students,
+                        g.slots,
+                        g.approved,
+                        g.received,
+                    ]),
+                    [
+                        "TOTAL",
+                        data.grand_total.students,
+                        data.grand_total.slots,
+                        data.grand_total.approved,
+                        data.grand_total.received,
+                    ],
+                ],
+            },
+        ]);
+        toast.success("Exported");
+    };
+
     return (
         <>
             <div className="px-5 py-2 bg-white border-b flex justify-end">
                 <button
-                    onClick={() =>
-                        downloadStudentsExcel(
-                            year ? { academic_year: year } : {},
-                            `students-bydonor-${year || "all"}`,
-                            toast,
-                        )
-                    }
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-1.5 rounded-lg text-xs font-semibold"
+                    onClick={exportDonor}
+                    className="bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold"
                 >
-                    ⬇ Download All Students ({year || "All Years"})
+                    ⬇ Export (.xlsx)
                 </button>
             </div>
-
             <ReportCard
-                title={`Donor-wise Report${year ? " — " + year : ""}`}
-                subtitle="Click a row to view and download that donor's students."
+                title={`Donor-wise${year ? " — " + year : ""}`}
+                subtitle="Click a row to view students."
             >
                 <table className="w-full text-sm">
-                    <thead>
-                        <tr className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wide">
+                    <thead className="bg-slate-100 text-slate-700 text-[11px] uppercase">
+                        <tr>
                             <th className="text-left px-3 py-2">Donor</th>
                             <th className="text-left px-3 py-2">Schemes</th>
                             <th className="text-right px-3 py-2">Students</th>
-                            <th className="text-right px-3 py-2">
-                                Scholarships
-                            </th>
-                            <th className="text-right px-3 py-2">
-                                Total Amount
-                            </th>
-                            <th className="text-center px-3 py-2 w-48">
-                                Students
-                            </th>
+                            <th className="text-right px-3 py-2">Slots</th>
+                            <th className="text-right px-3 py-2">Approved</th>
+                            <th className="text-right px-3 py-2">Received</th>
+                            <th className="text-center px-3 py-2">Students</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1100,14 +1157,17 @@ function DonorView({ year, onViewStudents }) {
                                 <td className="px-3 py-2 text-xs text-slate-600">
                                     {(g.schemes || []).join(", ") || "—"}
                                 </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
+                                <td className="px-3 py-2 text-right">
                                     {g.students}
                                 </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                    {g.total_slots}
+                                <td className="px-3 py-2 text-right">
+                                    {g.slots}
                                 </td>
-                                <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                                    {fmt(g.total_amount)}
+                                <td className="px-3 py-2 text-right font-semibold">
+                                    {fmt(g.approved)}
+                                </td>
+                                <td className="px-3 py-2 text-right font-semibold text-emerald-700">
+                                    {fmt(g.received)}
                                 </td>
                                 <td className="px-3 py-2 text-center">
                                     <button
@@ -1124,28 +1184,28 @@ function DonorView({ year, onViewStudents }) {
                                             });
                                         }}
                                     >
-                                        View & Download →
+                                        View →
                                     </button>
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                     <tfoot>
-                        <tr className="bg-purple-900 text-white font-bold text-sm">
+                        <tr className="bg-purple-900 text-white font-bold">
                             <td colSpan={2} className="px-3 py-3 text-right">
-                                GRAND TOTAL
+                                TOTAL
                             </td>
-                            <td className="px-3 py-3 text-right tabular-nums">
-                                {data.groups.reduce(
-                                    (s, x) => s + x.students,
-                                    0,
-                                )}
+                            <td className="px-3 py-3 text-right">
+                                {data.grand_total.students}
                             </td>
-                            <td className="px-3 py-3 text-right tabular-nums">
+                            <td className="px-3 py-3 text-right">
                                 {data.grand_total.slots}
                             </td>
-                            <td className="px-3 py-3 text-right tabular-nums">
-                                {fmt(data.grand_total.amount)}
+                            <td className="px-3 py-3 text-right">
+                                {fmt(data.grand_total.approved)}
+                            </td>
+                            <td className="px-3 py-3 text-right text-emerald-300">
+                                {fmt(data.grand_total.received)}
                             </td>
                             <td></td>
                         </tr>
@@ -1156,9 +1216,7 @@ function DonorView({ year, onViewStudents }) {
     );
 }
 
-// =============================================================
-// ALL STUDENTS (DETAILED) — unchanged
-// =============================================================
+// ── ALL STUDENTS (DETAILED) ──
 function AllStudentsView({ year }) {
     const toast = useToast();
     const { data, isLoading } = useQuery({
@@ -1173,29 +1231,27 @@ function AllStudentsView({ year }) {
     const exportAll = () => {
         const headers = [
             "S.No",
-            "Name of the Student",
             "Roll No.",
-            "Cheque No",
-            "Dated",
-            "Scholarship Stipend",
-            "Remarks",
+            "Name",
             "Scheme",
             "Donor",
-            "Department",
+            "Dept",
             "Year",
+            "Approved",
+            "Received",
+            "Status",
         ];
         const rows = data.data.map((r, i) => [
             i + 1,
+            r.student_id,
             r.student_name ?? "",
-            r.student_id ?? "",
-            r.cheque_no ?? "",
-            r.received_date ?? "",
-            r.approved_amount,
-            r.notes ?? "",
-            r.scheme ?? "",
-            r.donor ?? "",
+            r.scheme,
+            r.donor,
             r.department ?? "",
-            r.academic_year ?? "",
+            r.academic_year,
+            r.approved_amount,
+            r.received_amount,
+            r.payment_status,
         ]);
         rows.push([
             "",
@@ -1203,57 +1259,48 @@ function AllStudentsView({ year }) {
             "",
             "",
             "",
-            data.grand_total.amount,
             "",
             "",
-            "",
-            "",
+            data.grand_total.approved,
+            data.grand_total.received,
             "",
         ]);
-
-        downloadExcel(
-            safeFilename(`students-all-detailed-${year || "all"}.xlsx`),
-            [{ name: "Students", headers, rows }],
-        );
-        toast.success(`${data.data.length} students downloaded`);
+        downloadExcel(safeFilename(`students-detailed-${year || "all"}.xlsx`), [
+            { name: "Students", headers, rows },
+        ]);
+        toast.success("Exported");
     };
 
     return (
         <>
-            <div className="px-5 py-2 bg-white border-b flex justify-between items-center flex-wrap gap-2">
+            <div className="px-5 py-2 bg-white border-b flex justify-between items-center">
                 <p className="text-xs text-slate-500">
-                    {data.data.length} record(s) · PKR{" "}
-                    {fmt(data.grand_total.amount)}
-                    {year && (
-                        <span className="ml-2 text-purple-700 font-semibold">
-                            · {year}
-                        </span>
-                    )}
+                    {data.data.length} records · Approved PKR{" "}
+                    {fmt(data.grand_total.approved)} · Received PKR{" "}
+                    {fmt(data.grand_total.received)}
                 </p>
                 <button
                     onClick={exportAll}
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-1.5 rounded-lg text-xs font-semibold"
+                    className="bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold"
                 >
-                    ⬇ Export All Students (.xlsx)
+                    ⬇ Export (.xlsx)
                 </button>
             </div>
-
             <ReportCard
                 title={`All Students (Detailed)${year ? " — " + year : ""}`}
             >
                 <table className="w-full text-sm">
-                    <thead className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wide sticky top-0">
+                    <thead className="bg-slate-100 text-slate-700 text-[11px] uppercase sticky top-0">
                         <tr>
-                            <th className="text-left px-2 py-2 w-10">S.No</th>
-                            <th className="text-left px-2 py-2">Roll No.</th>
+                            <th className="text-left px-2 py-2">S.No</th>
+                            <th className="text-left px-2 py-2">Roll</th>
                             <th className="text-left px-2 py-2">Name</th>
-                            <th className="text-left px-2 py-2">Department</th>
                             <th className="text-left px-2 py-2">Scheme</th>
                             <th className="text-left px-2 py-2">Donor</th>
+                            <th className="text-left px-2 py-2">Dept</th>
                             <th className="text-left px-2 py-2">Year</th>
-                            <th className="text-right px-2 py-2">Amount</th>
-                            <th className="text-left px-2 py-2">Cheque</th>
-                            <th className="text-left px-2 py-2">Dated</th>
+                            <th className="text-right px-2 py-2">Approved</th>
+                            <th className="text-right px-2 py-2">Received</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1272,23 +1319,20 @@ function AllStudentsView({ year }) {
                                     {r.student_name || "—"}
                                 </td>
                                 <td className="px-2 py-2 text-xs">
-                                    {r.department || "—"}
-                                </td>
-                                <td className="px-2 py-2 text-xs">
                                     {r.scheme}
                                 </td>
                                 <td className="px-2 py-2 text-xs">{r.donor}</td>
                                 <td className="px-2 py-2 text-xs">
-                                    {r.academic_year}
-                                </td>
-                                <td className="px-2 py-2 text-right tabular-nums">
-                                    {fmt(r.approved_amount)}
-                                </td>
-                                <td className="px-2 py-2 font-mono text-xs">
-                                    {r.cheque_no || "—"}
+                                    {r.department || "—"}
                                 </td>
                                 <td className="px-2 py-2 text-xs">
-                                    {r.received_date || "—"}
+                                    {r.academic_year}
+                                </td>
+                                <td className="px-2 py-2 text-right font-semibold">
+                                    {fmt(r.approved_amount)}
+                                </td>
+                                <td className="px-2 py-2 text-right font-semibold text-emerald-700">
+                                    {fmt(r.received_amount)}
                                 </td>
                             </tr>
                         ))}
@@ -1298,10 +1342,12 @@ function AllStudentsView({ year }) {
                             <td colSpan={7} className="px-2 py-2 text-right">
                                 TOTAL
                             </td>
-                            <td className="px-2 py-2 text-right tabular-nums">
-                                {fmt(data.grand_total.amount)}
+                            <td className="px-2 py-2 text-right">
+                                {fmt(data.grand_total.approved)}
                             </td>
-                            <td colSpan={2}></td>
+                            <td className="px-2 py-2 text-right text-emerald-300">
+                                {fmt(data.grand_total.received)}
+                            </td>
                         </tr>
                     </tfoot>
                 </table>
@@ -1310,9 +1356,7 @@ function AllStudentsView({ year }) {
     );
 }
 
-// =============================================================
-// SHARED
-// =============================================================
+// ── SHARED ──
 function ReportCard({ title, subtitle, children }) {
     return (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm print-report">

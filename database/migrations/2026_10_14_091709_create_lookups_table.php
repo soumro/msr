@@ -16,7 +16,7 @@ return new class extends Migration
             $table->boolean('active')->default(true);
             $table->timestamps();
             $table->unique(['type', 'name']);
-            $table->index('type');
+            // $table->index('type');
         });
     }
 

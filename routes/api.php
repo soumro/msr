@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\BulkImportController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SettingController;
+use App\Http\Controllers\Api\BackupController;
 
 /*
 |--------------------------------------------------------------------------
@@ -212,28 +213,39 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('settings/logo', [SettingController::class, 'removeLogo']);
 
         // ---------- Backups ----------
-        Route::get('backup/list', function () {
-            return response()->json([
-                'data' => collect(Storage::files('backups'))
-                    ->map(fn ($f) => [
-                        'name'     => basename($f),
-                        'size'     => Storage::size($f),
-                        'modified' => Storage::lastModified($f),
-                    ])
-                    ->sortByDesc('modified')
-                    ->values(),
-            ]);
-        });
+        // Route::get('backup/list', function () {
+        //     return response()->json([
+        //         'data' => collect(Storage::files('backups'))
+        //             ->map(fn ($f) => [
+        //                 'name'     => basename($f),
+        //                 'size'     => Storage::size($f),
+        //                 'modified' => Storage::lastModified($f),
+        //             ])
+        //             ->sortByDesc('modified')
+        //             ->values(),
+        //     ]);
+        // });
 
-        Route::get('backup/download/{file}', function ($file) {
-            $path = 'backups/' . basename($file);
-            abort_unless(Storage::exists($path), 404);
-            return Storage::download($path);
-        });
+        // Route::get('backup/download/{file}', function ($file) {
+        //     $path = 'backups/' . basename($file);
+        //     abort_unless(Storage::exists($path), 404);
+        //     return Storage::download($path);
+        // });
 
-        Route::post('backup/run', function () {
-            Artisan::call('backup:database');
-            return response()->json(['ok' => true]);
+        // Route::post('backup/run', function () {
+        //     Artisan::call('backup:database');
+        //     return response()->json(['ok' => true]);
+        // });
+
+
+
+        Route::prefix('backup')->group(function () {
+            Route::get('list',                  [BackupController::class, 'list']);
+            Route::get('download-json',         [BackupController::class, 'downloadJson']);
+            Route::get('download-sql',          [BackupController::class, 'downloadSql']);
+            Route::get('download/{filename}',   [BackupController::class, 'download']);
+            Route::delete('{filename}',         [BackupController::class, 'destroy']);
+            Route::post('restore',              [BackupController::class, 'restore']);
         });
     });
 

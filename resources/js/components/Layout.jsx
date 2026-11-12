@@ -34,13 +34,13 @@ const NAV = [
         requires: "manage",
     },
 
-    { to: "/my-page", label: "My Page", icon: "🎯" },
     { to: "/reports/multi-record", label: "Multi-Record Students", icon: "🔀" },
     {
         to: "/reports/pending-installments",
         label: "Pending Installments",
         icon: "⏳",
     },
+    { to: "/settings/backup", label: "💾 Backups", requires: "manage" },
 ];
 
 export default function Layout() {

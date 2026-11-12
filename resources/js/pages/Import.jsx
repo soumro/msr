@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     downloadImportTemplate,
@@ -24,6 +24,7 @@ const fmtDate = (s) =>
 
 export default function Import() {
     const [mode, setMode] = useState("sheet");
+
     return (
         <div className="space-y-4">
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -69,6 +70,7 @@ function TabBtn({ active, onClick, children }) {
 function SheetImporter() {
     const toast = useToast();
     const confirm = useConfirm();
+    const importLock = useRef(false);
     const qc = useQueryClient();
     const [context, setContext] = useState({
         scheme: "",
@@ -109,12 +111,20 @@ function SheetImporter() {
     };
 
     const handleCommit = async () => {
+        if (importLock.current) return;
+        importLock.current = true;
+
         const ok = await confirm({
             title: "Import this roster?",
             message: `${preview.valid_count} valid row(s) will be created under "${context.scheme}" for ${context.academic_year}.`,
             confirmLabel: "Import now",
         });
-        if (!ok) return;
+
+        if (!ok) {
+            importLock.current = false;
+            return;
+        }
+
         setBusy(true);
         try {
             const res = await commitSheet(file, context);
@@ -129,6 +139,7 @@ function SheetImporter() {
             toast.error(err?.response?.data?.message ?? "Import failed.");
         } finally {
             setBusy(false);
+            importLock.current = false;
         }
     };
 

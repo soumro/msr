@@ -226,3 +226,35 @@ export const fetchPendingInstallments = (filters = {}) =>
 // append to resources/js/services/scholarships.js
 export const rollOverScholarship = (id, data) =>
     api.post(`/scholarships/${id}/roll-over`, data).then((r) => r.data);
+
+// ── Backups ──
+export const fetchBackupList = () =>
+    api.get("/backup/list").then((r) => r.data.data);
+
+export const deleteBackupFile = (filename) =>
+    api.delete(`/backup/${encodeURIComponent(filename)}`).then((r) => r.data);
+
+export const restoreFromBackup = (file, opts = {}) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (opts.restore_users) fd.append("restore_users", "1");
+    if (opts.wipe_current !== false) fd.append("wipe_current", "1");
+    return api
+        .post("/backup/restore", fd, {
+            headers: { "Content-Type": "multipart/form-data" },
+            timeout: 120000, // 2 minutes for large restores
+        })
+        .then((r) => r.data);
+};
+
+// Trigger a browser download via navigation (server sets Content-Disposition)
+export const triggerBackupDownload = (kind) => {
+    const url =
+        kind === "sql"
+            ? "/api/backup/download-sql"
+            : "/api/backup/download-json";
+    window.location.href = url;
+};
+
+export const backupDownloadUrl = (filename) =>
+    `/api/backup/download/${encodeURIComponent(filename)}`;

@@ -3,101 +3,354 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Installment;
 use App\Models\Scholarship;
+use App\Support\FiscalYear;
 use App\Support\StudentKey;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class ReportsController extends Controller
 {
+    // ==========================================================
+    // GROUPED (Funding → Donor → Scheme)
+    // ==========================================================
     public function yearEnd(Request $request)
     {
-        $years = Scholarship::distinct()->orderByDesc('academic_year')->pluck('academic_year')->values();
+        $years = Scholarship::distinct()->whereNotNull('academic_year')
+            ->orderByDesc('academic_year')->pluck('academic_year')->values();
         $year = $request->input('academic_year') ?: $years->first();
 
         if (!$year) {
             return response()->json([
                 'academic_year' => null, 'years' => [], 'groups' => [],
-                'grand_total' => ['slots' => 0, 'amount' => 0],
+                'grand_total' => ['slots' => 0, 'approved' => 0, 'received' => 0],
             ]);
         }
 
-        $rows = Scholarship::where('academic_year', $year)
+        $fyStart = FiscalYear::startOf($year)->toDateString();
+        $fyEnd   = FiscalYear::endOf($year)->toDateString();
+
+        // Approved: sum by group
+        $approvedRows = Scholarship::where('academic_year', $year)
             ->select(
                 DB::raw("COALESCE(NULLIF(funding_group, ''), 'Unassigned') as funding_group"),
                 'donor', 'scheme',
                 DB::raw('COUNT(*) as slots'),
-                DB::raw('SUM(approved_amount) as amount')
+                DB::raw('SUM(approved_amount) as approved')
             )
             ->groupBy('funding_group', 'donor', 'scheme')
-            ->orderBy('funding_group')->orderBy('donor')->orderBy('scheme')
-            ->get();
+            ->get()
+            ->keyBy(fn ($r) => $r->funding_group . '|' . $r->donor . '|' . $r->scheme);
 
-        $groups = $rows->groupBy('funding_group')
-            ->map(function ($g, $groupName) {
-                $groupRows = $g->map(fn ($r) => [
-                    'donor' => $r->donor, 'scheme' => $r->scheme,
-                    'slots' => (int) $r->slots, 'amount' => (float) $r->amount,
-                ])->values();
+        // Received: sum of installments landed in this FY, grouped by donor+scheme
+        $receivedRows = Installment::where('installments.status', 'received')
+            ->whereNotNull('installments.received_date')
+            ->whereBetween('installments.received_date', [$fyStart, $fyEnd])
+            ->join('scholarships', 'installments.scholarship_id', '=', 'scholarships.id')
+            ->where('scholarships.academic_year', $year)
+            ->select(
+                DB::raw("COALESCE(NULLIF(scholarships.funding_group, ''), 'Unassigned') as funding_group"),
+                'scholarships.donor', 'scholarships.scheme',
+                DB::raw('SUM(installments.amount) as received')
+            )
+            ->groupBy('scholarships.funding_group', 'scholarships.donor', 'scholarships.scheme')
+            ->get()
+            ->keyBy(fn ($r) => $r->funding_group . '|' . $r->donor . '|' . $r->scheme);
 
-                return [
-                    'funding_group' => $groupName,
-                    'rows' => $groupRows,
-                    'subtotal' => [
-                        'slots'  => $groupRows->sum('slots'),
-                        'amount' => $groupRows->sum('amount'),
-                    ],
-                ];
-            })->values();
+        $allKeys = $approvedRows->keys()->merge($receivedRows->keys())->unique()->values();
+
+        $groups = $allKeys->map(function ($key) use ($approvedRows, $receivedRows) {
+            [$fundingGroup] = explode('|', $key, 2);
+            $approved = $approvedRows->get($key);
+            $received = $receivedRows->get($key);
+
+            return [
+                'funding_group' => $fundingGroup,
+                'donor'  => $approved?->donor ?? $received?->donor,
+                'scheme' => $approved?->scheme ?? $received?->scheme,
+                'slots'  => (int) ($approved?->slots ?? 0),
+                'approved' => (float) ($approved?->approved ?? 0),
+                'received' => (float) ($received?->received ?? 0),
+            ];
+        })
+        ->groupBy('funding_group')
+        ->map(function ($rows, $groupName) {
+            $rows = $rows->sortBy('donor')->values();
+            return [
+                'funding_group' => $groupName,
+                'rows' => $rows,
+                'subtotal' => [
+                    'slots'    => $rows->sum('slots'),
+                    'approved' => $rows->sum('approved'),
+                    'received' => $rows->sum('received'),
+                ],
+            ];
+        })
+        ->values();
 
         return response()->json([
             'academic_year' => $year,
             'years' => $years,
             'groups' => $groups,
             'grand_total' => [
-                'slots'  => $rows->sum('slots'),
-                'amount' => $rows->sum('amount'),
+                'slots'    => $groups->sum(fn ($g) => $g['subtotal']['slots']),
+                'approved' => $groups->sum(fn ($g) => $g['subtotal']['approved']),
+                'received' => $groups->sum(fn ($g) => $g['subtotal']['received']),
             ],
         ]);
     }
 
+    // ==========================================================
+    // SUMMARY (donor + scheme flat)
+    // ==========================================================
     public function summary(Request $request)
     {
-        $years = Scholarship::distinct()->orderByDesc('academic_year')->pluck('academic_year')->values();
+        $years = Scholarship::distinct()->whereNotNull('academic_year')
+            ->orderByDesc('academic_year')->pluck('academic_year')->values();
         $year = $request->input('academic_year') ?: $years->first();
 
-        $query = Scholarship::query();
-        if ($year) $query->where('academic_year', $year);
+        $fyStart = $year ? FiscalYear::startOf($year)->toDateString() : null;
+        $fyEnd   = $year ? FiscalYear::endOf($year)->toDateString() : null;
 
-        $rows = $query->select('donor', 'scheme')
-            ->selectRaw('COUNT(*) as slots')
-            ->selectRaw('COUNT(DISTINCT ' . StudentKey::sqlExpression() . ') as students')
-            ->selectRaw('SUM(approved_amount) as amount')
-            ->groupBy('donor', 'scheme')
-            ->orderBy('donor')->orderBy('scheme')->get();
+        $approvedQuery = Scholarship::query();
+        if ($year) $approvedQuery->where('academic_year', $year);
+
+        $approvedRows = $approvedQuery
+            ->select('donor', 'scheme', DB::raw('COUNT(*) as slots'), DB::raw('SUM(approved_amount) as approved'))
+            ->groupBy('donor', 'scheme')->get()
+            ->keyBy(fn ($r) => $r->donor . '|' . $r->scheme);
+
+        $receivedQuery = Installment::where('installments.status', 'received')
+            ->whereNotNull('installments.received_date')
+            ->join('scholarships', 'installments.scholarship_id', '=', 'scholarships.id');
+        if ($year) {
+            $receivedQuery->where('scholarships.academic_year', $year)
+                ->whereBetween('installments.received_date', [$fyStart, $fyEnd]);
+        }
+        $receivedRows = $receivedQuery
+            ->select('scholarships.donor', 'scholarships.scheme', DB::raw('SUM(installments.amount) as received'))
+            ->groupBy('scholarships.donor', 'scholarships.scheme')->get()
+            ->keyBy(fn ($r) => $r->donor . '|' . $r->scheme);
+
+        $allKeys = $approvedRows->keys()->merge($receivedRows->keys())->unique()->values();
+
+        $rows = $allKeys->map(function ($key) use ($approvedRows, $receivedRows) {
+            $approved = $approvedRows->get($key);
+            $received = $receivedRows->get($key);
+            return [
+                'donor'    => $approved?->donor ?? $received?->donor,
+                'scheme'   => $approved?->scheme ?? $received?->scheme,
+                'slots'    => (int) ($approved?->slots ?? 0),
+                'approved' => (float) ($approved?->approved ?? 0),
+                'received' => (float) ($received?->received ?? 0),
+            ];
+        })->sortBy('donor')->values();
 
         return response()->json([
             'academic_year' => $year,
             'years' => $years,
-            'rows' => $rows->map(fn ($r) => [
-                'donor' => $r->donor, 'scheme' => $r->scheme,
-                'slots' => (int) $r->slots, 'students' => (int) $r->students,
-                'amount' => (float) $r->amount,
-            ])->values(),
+            'rows' => $rows,
             'grand_total' => [
-                'slots'    => (int) $rows->sum('slots'),
-                'students' => (int) $rows->sum('students'),
-                'amount'   => (float) $rows->sum('amount'),
+                'slots'    => (int)   $rows->sum('slots'),
+                'approved' => (float) $rows->sum('approved'),
+                'received' => (float) $rows->sum('received'),
             ],
         ]);
     }
 
-    public function studentWise(Request $request)
+    // ==========================================================
+    // YEAR-WISE (union of scholarship years + receipt years)
+    // ==========================================================
+    public function yearWise()
     {
-        $years = Scholarship::distinct()->orderByDesc('academic_year')->pluck('academic_year')->values();
+        $approvedByYear = Scholarship::select('academic_year')
+            ->selectRaw('COUNT(*) as records')
+            ->selectRaw('COUNT(DISTINCT COALESCE(cnic, student_id)) as students')
+            ->selectRaw('SUM(approved_amount) as approved')
+            ->groupBy('academic_year')->get()
+            ->keyBy('academic_year');
+
+        $receivedByYear = Installment::where('status', 'received')
+            ->whereNotNull('received_date')->get()
+            ->groupBy(fn ($i) => FiscalYear::ofDate($i->received_date))
+            ->map(fn ($items) => (float) $items->sum('amount'));
+
+        $allYears = $approvedByYear->keys()->merge($receivedByYear->keys())
+            ->unique()->sortDesc()->values();
+
+        $groups = $allYears->map(function ($year) use ($approvedByYear, $receivedByYear) {
+            $a = $approvedByYear[$year] ?? null;
+            return [
+                'academic_year' => $year,
+                'students'      => (int) ($a?->students ?? 0),
+                'records'       => (int) ($a?->records ?? 0),
+                'approved'      => (float) ($a?->approved ?? 0),
+                'received'      => (float) ($receivedByYear[$year] ?? 0),
+                'is_current'    => $year === FiscalYear::current(),
+            ];
+        })->values();
+
+        return response()->json([
+            'groups' => $groups,
+            'grand_total' => [
+                'years'    => $groups->count(),
+                'records'  => (int)   $groups->sum('records'),
+                'students' => (int)   $groups->sum('students'),
+                'approved' => (float) $groups->sum('approved'),
+                'received' => (float) $groups->sum('received'),
+            ],
+        ]);
+    }
+
+    // ==========================================================
+    // DEPARTMENT-WISE
+    // ==========================================================
+    public function departmentWise(Request $request)
+    {
+        $years = Scholarship::distinct()->whereNotNull('academic_year')
+            ->orderByDesc('academic_year')->pluck('academic_year')->values();
         $year = $request->input('academic_year');
 
-        $query = Scholarship::query();
+        $fyStart = $year ? FiscalYear::startOf($year)->toDateString() : null;
+        $fyEnd   = $year ? FiscalYear::endOf($year)->toDateString() : null;
+
+        $approvedQuery = Scholarship::query();
+        if ($year) $approvedQuery->where('academic_year', $year);
+
+        $approvedRows = $approvedQuery
+            ->select(
+                DB::raw("COALESCE(NULLIF(department, ''), 'Unassigned') as department"),
+                DB::raw('COUNT(*) as slots'),
+                DB::raw('COUNT(DISTINCT COALESCE(cnic, student_id)) as students'),
+                DB::raw('SUM(approved_amount) as approved')
+            )
+            ->groupBy('department')->get()
+            ->keyBy('department');
+
+        $receivedQuery = Installment::where('installments.status', 'received')
+            ->whereNotNull('installments.received_date')
+            ->join('scholarships', 'installments.scholarship_id', '=', 'scholarships.id');
+        if ($year) {
+            $receivedQuery->where('scholarships.academic_year', $year)
+                ->whereBetween('installments.received_date', [$fyStart, $fyEnd]);
+        }
+        $receivedRows = $receivedQuery
+            ->select(
+                DB::raw("COALESCE(NULLIF(scholarships.department, ''), 'Unassigned') as department"),
+                DB::raw('SUM(installments.amount) as received')
+            )
+            ->groupBy('scholarships.department')->get()
+            ->keyBy('department');
+
+        $allKeys = $approvedRows->keys()->merge($receivedRows->keys())->unique()->values();
+
+        $groups = $allKeys->map(function ($dept) use ($approvedRows, $receivedRows) {
+            $a = $approvedRows[$dept] ?? null;
+            $r = $receivedRows[$dept] ?? null;
+            return [
+                'department' => $dept,
+                'slots'      => (int) ($a?->slots ?? 0),
+                'students'   => (int) ($a?->students ?? 0),
+                'approved'   => (float) ($a?->approved ?? 0),
+                'received'   => (float) ($r?->received ?? 0),
+            ];
+        })->sortBy('department')->values();
+
+        return response()->json([
+            'academic_year' => $year,
+            'years' => $years,
+            'groups' => $groups,
+            'grand_total' => [
+                'departments' => $groups->count(),
+                'slots'       => (int)   $groups->sum('slots'),
+                'students'    => (int)   $groups->sum('students'),
+                'approved'    => (float) $groups->sum('approved'),
+                'received'    => (float) $groups->sum('received'),
+            ],
+        ]);
+    }
+
+    // ==========================================================
+    // DONOR-WISE
+    // ==========================================================
+    public function donorWise(Request $request)
+    {
+        $years = Scholarship::distinct()->whereNotNull('academic_year')
+            ->orderByDesc('academic_year')->pluck('academic_year')->values();
+        $year = $request->input('academic_year');
+
+        $fyStart = $year ? FiscalYear::startOf($year)->toDateString() : null;
+        $fyEnd   = $year ? FiscalYear::endOf($year)->toDateString() : null;
+
+        $approvedQuery = Scholarship::query();
+        if ($year) $approvedQuery->where('academic_year', $year);
+
+        $approvedRows = $approvedQuery
+            ->select(
+                DB::raw("COALESCE(NULLIF(donor, ''), 'Unassigned') as donor"),
+                DB::raw('COUNT(*) as slots'),
+                DB::raw('COUNT(DISTINCT COALESCE(cnic, student_id)) as students'),
+                DB::raw('SUM(approved_amount) as approved'),
+                DB::raw('GROUP_CONCAT(DISTINCT scheme) as schemes')
+            )
+            ->groupBy('donor')->get()
+            ->keyBy('donor');
+
+        $receivedQuery = Installment::where('installments.status', 'received')
+            ->whereNotNull('installments.received_date')
+            ->join('scholarships', 'installments.scholarship_id', '=', 'scholarships.id');
+        if ($year) {
+            $receivedQuery->where('scholarships.academic_year', $year)
+                ->whereBetween('installments.received_date', [$fyStart, $fyEnd]);
+        }
+        $receivedRows = $receivedQuery
+            ->select(
+                DB::raw("COALESCE(NULLIF(scholarships.donor, ''), 'Unassigned') as donor"),
+                DB::raw('SUM(installments.amount) as received')
+            )
+            ->groupBy('scholarships.donor')->get()
+            ->keyBy('donor');
+
+        $allKeys = $approvedRows->keys()->merge($receivedRows->keys())->unique()->values();
+
+        $groups = $allKeys->map(function ($donor) use ($approvedRows, $receivedRows) {
+            $a = $approvedRows[$donor] ?? null;
+            $r = $receivedRows[$donor] ?? null;
+            return [
+                'donor'    => $donor,
+                'slots'    => (int) ($a?->slots ?? 0),
+                'students' => (int) ($a?->students ?? 0),
+                'approved' => (float) ($a?->approved ?? 0),
+                'received' => (float) ($r?->received ?? 0),
+                'schemes'  => $a?->schemes ? explode(',', $a->schemes) : [],
+            ];
+        })->sortBy('donor')->values();
+
+        return response()->json([
+            'academic_year' => $year,
+            'years' => $years,
+            'groups' => $groups,
+            'grand_total' => [
+                'donors'   => $groups->count(),
+                'slots'    => (int)   $groups->sum('slots'),
+                'students' => (int)   $groups->sum('students'),
+                'approved' => (float) $groups->sum('approved'),
+                'received' => (float) $groups->sum('received'),
+            ],
+        ]);
+    }
+
+    // ==========================================================
+    // STUDENT-WISE
+    // ==========================================================
+    public function studentWise(Request $request)
+    {
+        $years = Scholarship::distinct()->whereNotNull('academic_year')
+            ->orderByDesc('academic_year')->pluck('academic_year')->values();
+        $year = $request->input('academic_year');
+
+        $query = Scholarship::with('installments');
         if ($year) $query->where('academic_year', $year);
 
         $rows = $query->orderBy('student_name')->orderBy('academic_year', 'desc')->get();
@@ -111,19 +364,24 @@ class ReportsController extends Controller
                     'cnic'         => $first->cnic,
                     'department'   => $first->department,
                     'total_slots'  => $group->count(),
-                    'total_amount' => (float) $group->sum('approved_amount'),
-                    'records'      => $group->map(fn ($r) => [
+                    'total_approved' => (float) $group->sum('approved_amount'),
+                    'total_received' => (float) $group->sum(fn ($r) => $r->installments->where('status','received')->sum('amount')),
+                    'records' => $group->map(fn ($r) => [
                         'id'              => $r->id,
                         'scheme'          => $r->scheme,
                         'category'        => $r->category,
                         'academic_year'   => $r->academic_year,
                         'donor'           => $r->donor,
-                        'cheque_no'       => $r->cheque_no,
-                        'received_date'   => $r->received_date?->format('Y-m-d'),
                         'approved_amount' => (float) $r->approved_amount,
+                        'received_amount' => (float) $r->installments->where('status','received')->sum('amount'),
                         'payment_status'  => $r->payment_status,
-                        'renewal_status'  => $r->renewal_status,
-                        'notes'           => $r->notes,
+                        'installments'    => $r->installments->map(fn ($i) => [
+                            'installment_no' => $i->installment_no,
+                            'amount'         => (float) $i->amount,
+                            'received_date'  => $i->received_date?->format('Y-m-d'),
+                            'fiscal_year'    => $i->received_date ? FiscalYear::ofDate($i->received_date) : null,
+                            'status'         => $i->status,
+                        ])->values(),
                     ])->values(),
                 ];
             })->values();
@@ -135,113 +393,18 @@ class ReportsController extends Controller
             'grand_total' => [
                 'students' => $groups->count(),
                 'slots'    => $rows->count(),
-                'amount'   => (float) $rows->sum('approved_amount'),
+                'approved' => (float) $rows->sum('approved_amount'),
+                'received' => (float) $rows->sum(fn ($r) => $r->installments->where('status','received')->sum('amount')),
             ],
         ]);
     }
 
-    public function yearWise()
-    {
-        $rows = Scholarship::orderByDesc('academic_year')->get();
-
-        $groups = $rows->groupBy('academic_year')
-            ->sortKeysDesc()
-            ->map(function ($group, $year) {
-                return [
-                    'academic_year' => $year,
-                    'total_slots'   => $group->count(),
-                    'total_amount'  => (float) $group->sum('approved_amount'),
-                    'students'      => $group->map(fn ($r) => StudentKey::fromRow($r))->unique()->count(),
-                ];
-            })->values();
-
-        return response()->json([
-            'groups' => $groups,
-            'grand_total' => [
-                'years'  => $groups->count(),
-                'slots'  => $rows->count(),
-                'amount' => (float) $rows->sum('approved_amount'),
-            ],
-        ]);
-    }
-
-    public function departmentWise(Request $request)
-    {
-        $years = Scholarship::distinct()->orderByDesc('academic_year')->pluck('academic_year')->values();
-        $year = $request->input('academic_year');
-
-        $query = Scholarship::query();
-        if ($year) $query->where('academic_year', $year);
-
-        $rows = $query->get();
-
-        $groups = $rows->groupBy(fn ($r) => $r->department ?: 'Unassigned')
-            ->map(function ($group, $dept) {
-                return [
-                    'department'   => $dept,
-                    'total_slots'  => $group->count(),
-                    'total_amount' => (float) $group->sum('approved_amount'),
-                    'students'     => $group->map(fn ($r) => StudentKey::fromRow($r))->unique()->count(),
-                ];
-            })
-            ->sortBy('department')
-            ->values();
-
-        return response()->json([
-            'academic_year' => $year,
-            'years' => $years,
-            'groups' => $groups,
-            'grand_total' => [
-                'departments' => $groups->count(),
-                'slots'       => $rows->count(),
-                'amount'      => (float) $rows->sum('approved_amount'),
-            ],
-        ]);
-    }
-
-    public function donorWise(Request $request)
-    {
-        $years = Scholarship::distinct()
-            ->whereNotNull('academic_year')
-            ->orderByDesc('academic_year')
-            ->pluck('academic_year')
-            ->values();
-
-        $year = $request->input('academic_year');
-
-        $query = Scholarship::query();
-        if ($year) $query->where('academic_year', $year);
-
-        $rows = $query->get();
-
-        $groups = $rows->groupBy(fn ($r) => $r->donor ?: 'Unassigned')
-            ->map(function ($group, $donor) {
-                return [
-                    'donor'         => $donor,
-                    'total_slots'   => $group->count(),
-                    'total_amount'  => (float) $group->sum('approved_amount'),
-                    'students'      => $group->map(fn ($r) => StudentKey::fromRow($r))->unique()->count(),
-                    'schemes'       => $group->pluck('scheme')->unique()->values()->all(),
-                ];
-            })
-            ->sortBy('donor')
-            ->values();
-
-        return response()->json([
-            'academic_year' => $year,
-            'years'         => $years,
-            'groups'        => $groups,
-            'grand_total' => [
-                'donors'  => $groups->count(),
-                'slots'   => $rows->count(),
-                'amount'  => (float) $rows->sum('approved_amount'),
-            ],
-        ]);
-    }
-
+    // ==========================================================
+    // STUDENT DETAIL (for the modal on any clicked row)
+    // ==========================================================
     public function studentDetail(Request $request)
     {
-        $query = Scholarship::query();
+        $query = Scholarship::with('installments');
 
         foreach (['academic_year','donor','scheme','funding_group','department','category'] as $f) {
             if ($request->filled($f)) $query->where($f, $request->input($f));
@@ -254,195 +417,29 @@ class ReportsController extends Controller
                 's_no'            => $i + 1,
                 'student_name'    => $r->student_name,
                 'student_id'      => $r->student_id,
-                'cheque_no'       => $r->cheque_no,
-                'received_date'   => $r->received_date?->format('Y-m-d'),
-                'approved_amount' => (float) $r->approved_amount,
-                'notes'           => $r->notes,
+                'cnic'            => $r->cnic,
                 'scheme'          => $r->scheme,
                 'donor'           => $r->donor,
-                'academic_year'   => $r->academic_year,
                 'department'      => $r->department,
-                'funding_group'   => $r->funding_group,
+                'academic_year'   => $r->academic_year,
+                'approved_amount' => (float) $r->approved_amount,
+                'received_amount' => (float) $r->installments->where('status','received')->sum('amount'),
+                'payment_status'  => $r->payment_status,
+                'notes'           => $r->notes,
+                'installments'    => $r->installments->map(fn ($i) => [
+                    'installment_no' => $i->installment_no,
+                    'amount'         => (float) $i->amount,
+                    'cheque_no'      => $i->cheque_no,
+                    'received_date'  => $i->received_date?->format('Y-m-d'),
+                    'fiscal_year'    => $i->received_date ? FiscalYear::ofDate($i->received_date) : null,
+                    'status'         => $i->status,
+                    'notes'          => $i->notes,
+                ])->values(),
             ]),
             'grand_total' => [
-                'count'  => $rows->count(),
-                'amount' => (float) $rows->sum('approved_amount'),
-            ],
-        ]);
-    }
-
-        /**
-     * Students with 2+ scholarship records.
-     * Explains why Records > Beneficiaries (e.g. 239 - 236 = 3).
-     */
-    public function multiRecordStudents(Request $request)
-    {
-        $year = $request->input('academic_year');
-
-        $query = Scholarship::query();
-        if ($year) $query->where('academic_year', $year);
-
-        // Group by student_id (roll-no-only uniqueness)
-        $allRows = $query->orderBy('student_id')->orderBy('academic_year')->get();
-
-        $grouped = $allRows->groupBy(fn ($r) => trim((string) ($r->student_id ?? '')))
-            ->filter(fn ($group, $key) => $key !== '' && $group->count() > 1)
-            ->map(function ($group, $studentId) {
-                $first = $group->first();
-                return [
-                    'student_id'    => $first->student_id,
-                    'student_name'  => $first->student_name,
-                    'cnic'          => $first->cnic,
-                    'department'    => $first->department,
-                    'record_count'  => $group->count(),
-                    'total_amount'  => (float) $group->sum('approved_amount'),
-                    'records'       => $group->map(fn ($r) => [
-                        'id'              => $r->id,
-                        'scheme'          => $r->scheme,
-                        'donor'           => $r->donor,
-                        'category'        => $r->category,
-                        'academic_year'   => $r->academic_year,
-                        'approved_amount' => (float) $r->approved_amount,
-                        'cheque_no'       => $r->cheque_no,
-                        'received_date'   => $r->received_date?->format('Y-m-d'),
-                        'payment_status'  => $r->payment_status,
-                        'notes'           => $r->notes,
-                    ])->values(),
-                ];
-            })
-            ->sortByDesc('record_count')
-            ->values();
-
-        $extraRecords = $grouped->sum(fn ($g) => $g['record_count'] - 1);
-
-        return response()->json([
-            'academic_year' => $year,
-            'students' => $grouped,
-            'summary' => [
-                'multi_students'  => $grouped->count(),
-                'extra_records'   => (int) $extraRecords,
-                'total_records'   => (int) $allRows->count(),
-                'unique_students' => (int) $allRows->pluck('student_id')->filter()->unique()->count(),
-            ],
-        ]);
-    }
-
-    /**
-     * Students with 2+ installments on any scholarship (2nd, 3rd, ... payment).
-     * This is the "who's getting their 2nd installment" financial view.
-     */
-    public function secondInstallments(Request $request)
-    {
-        $year = $request->input('academic_year');
-
-        // Load scholarships that have 2+ installments
-        $query = Scholarship::with('installments');
-        if ($year) $query->where('academic_year', $year);
-
-        $withMultiple = $query->get()->filter(fn ($s) => $s->installments->count() > 1);
-
-        $rows = $withMultiple->map(function ($s) {
-            $installments = $s->installments->sortBy('installment_no');
-
-            return [
-                'scholarship_id'   => $s->id,
-                'student_id'       => $s->student_id,
-                'student_name'     => $s->student_name,
-                'scheme'           => $s->scheme,
-                'donor'            => $s->donor,
-                'academic_year'    => $s->academic_year,
-                'approved_amount'  => (float) $s->approved_amount,
-                'installment_count'=> $installments->count(),
-                'received_count'   => $installments->where('status', 'received')->count(),
-                'received_amount'  => (float) $installments->where('status', 'received')->sum('amount'),
-                'installments'     => $installments->values()->map(fn ($i) => [
-                    'id'              => $i->id,
-                    'installment_no'  => $i->installment_no,
-                    'amount'          => (float) $i->amount,
-                    'cheque_no'       => $i->cheque_no,
-                    'received_date'   => $i->received_date?->format('Y-m-d'),
-                    'status'          => $i->status,
-                    'notes'           => $i->notes,
-                ]),
-            ];
-        })->sortBy('student_id')->values();
-
-        // Which installment number is currently awaiting payment?
-        $awaiting2nd = $rows->filter(fn ($r) => $r['installments']->firstWhere('installment_no', 2) &&
-                                            $r['installments']->firstWhere('installment_no', 2)['status'] === 'pending')
-                            ->count();
-        $awaiting3rd = $rows->filter(fn ($r) => $r['installments']->firstWhere('installment_no', 3) &&
-                                            $r['installments']->firstWhere('installment_no', 3)['status'] === 'pending')
-                            ->count();
-
-        return response()->json([
-            'academic_year' => $year,
-            'rows' => $rows,
-            'summary' => [
-                'scholarships_with_multi_installments' => $rows->count(),
-                'awaiting_2nd_payment' => $awaiting2nd,
-                'awaiting_3rd_payment' => $awaiting3rd,
-                'total_installments'   => $rows->sum('installment_count'),
-                'total_received'       => $rows->sum('received_amount'),
-            ],
-        ]);
-    }
-
-    public function pendingInstallments(Request $request)
-    {
-        $query = \App\Models\Installment::query()
-            ->where('status', 'pending')
-            ->with('scholarship');
-
-        if ($request->filled('academic_year')) {
-            $query->whereHas('scholarship', fn ($q) => $q->where('academic_year', $request->input('academic_year')));
-        }
-        if ($request->filled('donor')) {
-            $query->whereHas('scholarship', fn ($q) => $q->where('donor', $request->input('donor')));
-        }
-        if ($request->filled('scheme')) {
-            $query->whereHas('scholarship', fn ($q) => $q->where('scheme', $request->input('scheme')));
-        }
-
-        $installments = $query->orderBy('installment_no')->get();
-
-        $grouped = $installments->groupBy(fn ($i) => $i->scholarship?->student_id ?: 'UNKNOWN')
-            ->map(function ($items, $studentId) {
-                $first = $items->first();
-                $s = $first->scholarship;
-                return [
-                    'student_id'     => $studentId,
-                    'student_name'   => $s?->student_name,
-                    'cnic'           => $s?->cnic,
-                    'department'     => $s?->department,
-                    'pending_count'  => $items->count(),
-                    'pending_amount' => (float) $items->sum('amount'),
-                    'installments'   => $items->map(fn ($i) => [
-                        'id'             => $i->id,
-                        'scholarship_id' => $i->scholarship_id,
-                        'installment_no' => $i->installment_no,
-                        'amount'         => (float) $i->amount,
-                        'scheme'         => $s?->scheme,
-                        'donor'          => $s?->donor,
-                        'academic_year'  => $s?->academic_year,
-                        'cheque_no'      => $i->cheque_no,
-                        'received_date'  => $i->received_date?->format('Y-m-d'),
-                        'notes'          => $i->notes,
-                    ])->values(),
-                ];
-            })->sortByDesc('pending_amount')->values();
-
-        $years   = \App\Models\Scholarship::distinct()->whereNotNull('academic_year')->orderByDesc('academic_year')->pluck('academic_year')->values();
-        $donors  = \App\Models\Scholarship::distinct()->whereNotNull('donor')->orderBy('donor')->pluck('donor')->values();
-        $schemes = \App\Models\Scholarship::distinct()->whereNotNull('scheme')->orderBy('scheme')->pluck('scheme')->values();
-
-        return response()->json([
-            'data' => $grouped,
-            'filters' => ['years' => $years, 'donors' => $donors, 'schemes' => $schemes],
-            'summary' => [
-                'students_with_pending' => $grouped->count(),
-                'total_pending_records' => $installments->count(),
-                'total_pending_amount'  => (float) $installments->sum('amount'),
+                'count'    => $rows->count(),
+                'approved' => (float) $rows->sum('approved_amount'),
+                'received' => (float) $rows->sum(fn ($r) => $r->installments->where('status','received')->sum('amount')),
             ],
         ]);
     }

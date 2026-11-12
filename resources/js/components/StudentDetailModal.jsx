@@ -18,7 +18,6 @@ const fmtDate = (s) =>
 
 export default function StudentDetailModal({ title, filters, onClose }) {
     const toast = useToast();
-
     const { data, isLoading } = useQuery({
         queryKey: ["report-student-detail", filters],
         queryFn: () => fetchReportStudentDetail(filters),
@@ -29,43 +28,38 @@ export default function StudentDetailModal({ title, filters, onClose }) {
 
         const headers = [
             "S.No",
-            "Name of the Student",
             "Roll No.",
-            "Cheque No",
-            "Dated",
-            "Scholarship Stipend",
-            "Remarks",
+            "Name",
             "Scheme",
             "Donor",
-            "Department",
+            "Dept",
             "Year",
+            "Approved",
+            "Received",
+            "Status",
         ];
-
         const rows = data.data.map((r, i) => [
             i + 1,
+            r.student_id,
             r.student_name ?? "",
-            r.student_id ?? "",
-            r.cheque_no ?? "",
-            r.received_date ?? "",
-            r.approved_amount,
-            r.notes ?? "",
-            r.scheme ?? "",
-            r.donor ?? "",
+            r.scheme,
+            r.donor,
             r.department ?? "",
-            r.academic_year ?? "",
+            r.academic_year,
+            r.approved_amount,
+            r.received_amount,
+            r.payment_status,
         ]);
-
         rows.push([
             "",
             "TOTAL",
             "",
             "",
             "",
-            data.grand_total.amount,
             "",
             "",
-            "",
-            "",
+            data.grand_total.approved,
+            data.grand_total.received,
             "",
         ]);
 
@@ -75,7 +69,7 @@ export default function StudentDetailModal({ title, filters, onClose }) {
             ),
             [{ name: "Students", headers, rows }],
         );
-        toast.success(`${data.data.length} students downloaded`);
+        toast.success(`${data.data.length} students exported`);
     };
 
     return (
@@ -93,55 +87,50 @@ export default function StudentDetailModal({ title, filters, onClose }) {
                         <p className="text-xs text-slate-500 mt-0.5">
                             {isLoading
                                 ? "Loading…"
-                                : `${data?.data?.length ?? 0} student(s) · PKR ${fmt(data?.grand_total?.amount ?? 0)}`}
+                                : `${data?.data?.length ?? 0} record(s) · Approved PKR ${fmt(data?.grand_total?.approved ?? 0)} · Received PKR ${fmt(data?.grand_total?.received ?? 0)}`}
                         </p>
                     </div>
                     <div className="flex gap-2 items-center">
                         <button
                             onClick={exportExcel}
                             disabled={!data?.data?.length}
-                            className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 whitespace-nowrap"
+                            className="bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60"
                         >
                             ⬇ Export Excel
                         </button>
                         <button
                             onClick={onClose}
-                            className="text-slate-500 hover:text-slate-900 text-xl leading-none px-2"
+                            className="text-slate-500 hover:text-slate-900 text-xl px-2"
                         >
                             ✕
                         </button>
                     </div>
                 </div>
 
-                <div className="overflow-auto max-h-[70vh]">
+                <div className="overflow-auto max-h-[75vh]">
                     <table className="w-full text-sm">
-                        <thead className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wide sticky top-0">
+                        <thead className="bg-slate-100 text-slate-700 text-[11px] uppercase sticky top-0">
                             <tr>
-                                <th className="text-left px-2 py-2 w-10">
-                                    S.No
-                                </th>
+                                <th className="text-left px-2 py-2">S.No</th>
+                                <th className="text-left px-2 py-2">Roll</th>
                                 <th className="text-left px-2 py-2">Name</th>
-                                <th className="text-left px-2 py-2">
-                                    Roll No.
-                                </th>
-                                <th className="text-left px-2 py-2">
-                                    Cheque No
-                                </th>
-                                <th className="text-left px-2 py-2">Dated</th>
-                                <th className="text-right px-2 py-2">
-                                    Stipend
-                                </th>
-                                <th className="text-left px-2 py-2">Remarks</th>
                                 <th className="text-left px-2 py-2">Scheme</th>
                                 <th className="text-left px-2 py-2">Donor</th>
+                                <th className="text-left px-2 py-2">Dept</th>
                                 <th className="text-left px-2 py-2">Year</th>
+                                <th className="text-right px-2 py-2">
+                                    Approved
+                                </th>
+                                <th className="text-right px-2 py-2">
+                                    Received
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
                             {isLoading && (
                                 <tr>
                                     <td
-                                        colSpan={10}
+                                        colSpan={9}
                                         className="p-6 text-center text-slate-500"
                                     >
                                         Loading…
@@ -151,41 +140,26 @@ export default function StudentDetailModal({ title, filters, onClose }) {
                             {!isLoading && !data?.data?.length && (
                                 <tr>
                                     <td
-                                        colSpan={10}
+                                        colSpan={9}
                                         className="p-6 text-center text-slate-500"
                                     >
-                                        No students.
+                                        No records.
                                     </td>
                                 </tr>
                             )}
                             {data?.data?.map((r) => (
                                 <tr
                                     key={r.s_no}
-                                    className="border-t hover:bg-purple-50/40"
+                                    className="border-t hover:bg-purple-50/40 align-top"
                                 >
                                     <td className="px-2 py-2 text-xs text-slate-500">
                                         {r.s_no}
                                     </td>
-                                    <td className="px-2 py-2 font-medium">
+                                    <td className="px-2 py-2 font-mono text-xs">
+                                        {r.student_id}
+                                    </td>
+                                    <td className="px-2 py-2">
                                         {r.student_name || "—"}
-                                    </td>
-                                    <td className="px-2 py-2 font-mono text-xs">
-                                        {r.student_id || "—"}
-                                    </td>
-                                    <td className="px-2 py-2 font-mono text-xs">
-                                        {r.cheque_no || "—"}
-                                    </td>
-                                    <td className="px-2 py-2 text-xs whitespace-nowrap">
-                                        {fmtDate(r.received_date)}
-                                    </td>
-                                    <td className="px-2 py-2 text-right tabular-nums">
-                                        {fmt(r.approved_amount)}
-                                    </td>
-                                    <td
-                                        className="px-2 py-2 text-xs text-slate-600 max-w-[200px] truncate"
-                                        title={r.notes ?? ""}
-                                    >
-                                        {r.notes || "—"}
                                     </td>
                                     <td className="px-2 py-2 text-xs">
                                         {r.scheme}
@@ -194,7 +168,36 @@ export default function StudentDetailModal({ title, filters, onClose }) {
                                         {r.donor}
                                     </td>
                                     <td className="px-2 py-2 text-xs">
+                                        {r.department || "—"}
+                                    </td>
+                                    <td className="px-2 py-2 text-xs">
                                         {r.academic_year}
+                                    </td>
+                                    <td className="px-2 py-2 text-right tabular-nums">
+                                        {fmt(r.approved_amount)}
+                                    </td>
+                                    <td className="px-2 py-2 text-right tabular-nums font-semibold text-emerald-700">
+                                        {fmt(r.received_amount)}
+                                        {(r.installments ?? []).length > 0 && (
+                                            <div className="text-[10px] text-slate-500 font-normal mt-0.5">
+                                                {(r.installments ?? []).map(
+                                                    (ins) => (
+                                                        <div
+                                                            key={
+                                                                ins.installment_no
+                                                            }
+                                                        >
+                                                            #
+                                                            {ins.installment_no}{" "}
+                                                            ·{" "}
+                                                            {ins.fiscal_year ??
+                                                                "—"}{" "}
+                                                            · {ins.status}
+                                                        </div>
+                                                    ),
+                                                )}
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
@@ -203,15 +206,17 @@ export default function StudentDetailModal({ title, filters, onClose }) {
                             <tfoot>
                                 <tr className="bg-purple-900 text-white font-bold sticky bottom-0">
                                     <td
-                                        colSpan={5}
+                                        colSpan={7}
                                         className="px-2 py-2 text-right"
                                     >
                                         TOTAL
                                     </td>
-                                    <td className="px-2 py-2 text-right tabular-nums">
-                                        {fmt(data.grand_total.amount)}
+                                    <td className="px-2 py-2 text-right">
+                                        {fmt(data.grand_total.approved)}
                                     </td>
-                                    <td colSpan={4}></td>
+                                    <td className="px-2 py-2 text-right text-emerald-300">
+                                        {fmt(data.grand_total.received)}
+                                    </td>
                                 </tr>
                             </tfoot>
                         )}
