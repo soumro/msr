@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
@@ -15,45 +16,54 @@ class AuditReportsController extends Controller
     // ============================================================
     public function distribution(Request $request)
     {
+        $filterYear = $request->filled('academic_year')
+            ? $this->normalizeYear($request->input('academic_year'))
+            : null;
+
         $query = Scholarship::with([
             'installments' => fn ($q) => $q->orderBy('installment_no'),
             'recoveries',
         ]);
 
-        if ($request->filled('scheme'))         $query->where('scheme', $request->input('scheme'));
-        if ($request->filled('academic_year'))  $query->where('academic_year', $request->input('academic_year'));
+        if ($request->filled('scheme')) {
+            $query->where('scheme', $request->input('scheme'));
+        }
 
         $rows = $query->orderBy('student_name')->get()->values()->map(function ($s, $i) {
-            $inst = $s->installments->keyBy('installment_no');
+            $inst  = $s->installments->keyBy('installment_no');
             $gross = (float) $s->installments->sum('amount');
             $recovered = (float) $s->recoveries->sum('recovered_amount');
 
             return [
-                's_no'         => $i + 1,
-                'id'           => $s->id,
-                'student_name' => $s->student_name,
-                'father_name'  => $s->father_name,
-                'roll_no'      => $s->student_id,
-                'cnic'         => $s->cnic,
-                'scholarship'  => $s->scheme,
-                'academic_year'=> $s->academic_year,
-
-                'inst_1' => $this->instRow($inst->get(1)),
-                'inst_2' => $this->instRow($inst->get(2)),
-                'inst_3' => $this->instRow($inst->get(3)),
-                'inst_4' => $this->instRow($inst->get(4)),
-
-                'gross_paid'          => $gross,
-                'recovery_cheque_no'  => $s->recoveries->first()?->recovery_cheque_no,
-                'recovered_amount'    => $recovered,
-                'recovery_date'       => $s->recoveries->first()?->recovery_date?->format('Y-m-d'),
-                'net_retained'        => $gross - $recovered,
-                'cheque_status'       => $s->cheque_status,
-                'receiver_sign'       => $s->receiver_sign,
+                's_no'          => $i + 1,
+                'id'            => $s->id,
+                'student_name'  => $s->student_name,
+                'father_name'   => $s->father_name,
+                'roll_no'       => $s->student_id,
+                'cnic'          => $s->cnic,
+                'scholarship'   => $s->scheme,
+                'academic_year' => $s->academic_year,
+                'inst_1'        => $this->instRow($inst->get(1)),
+                'inst_2'        => $this->instRow($inst->get(2)),
+                'inst_3'        => $this->instRow($inst->get(3)),
+                'inst_4'        => $this->instRow($inst->get(4)),
+                'gross_paid'         => $gross,
+                'recovery_cheque_no' => $s->recoveries->first()?->recovery_cheque_no,
+                'recovered_amount'   => $recovered,
+                'recovery_date'      => $s->recoveries->first()?->recovery_date?->format('Y-m-d'),
+                'net_retained'       => $gross - $recovered,
+                'cheque_status'      => $s->cheque_status,
+                'receiver_sign'      => $s->receiver_sign,
             ];
         });
 
-        // ── Summary by Program ──
+        // Filter by year in PHP so any format works
+        if ($filterYear) {
+            $rows = $rows->filter(
+                fn ($r) => $this->normalizeYear($r['academic_year']) === $filterYear
+            )->values();
+        }
+
         $byProgram = $rows->groupBy('scholarship')->map(fn ($g, $k) => [
             'program'      => $k,
             'students'     => $g->count(),
@@ -62,7 +72,6 @@ class AuditReportsController extends Controller
             'net_retained' => $g->sum('net_retained'),
         ])->sortBy('program')->values();
 
-        // ── Summary by Year ──
         $byYear = $rows->groupBy('academic_year')->map(fn ($g, $k) => [
             'year'         => $k,
             'students'     => $g->count(),
@@ -75,9 +84,8 @@ class AuditReportsController extends Controller
             'net_retained' => $g->sum('net_retained'),
         ])->sortByDesc('year')->values();
 
-        // ── Summary by Cheque Status ──
         $byStatus = $rows->groupBy('cheque_status')->map(fn ($g, $k) => [
-            'status'       => $k,
+            'status'       => $k ?: 'issued',
             'count'        => $g->count(),
             'gross_amount' => $g->sum('gross_paid'),
         ])->values();
@@ -116,13 +124,19 @@ class AuditReportsController extends Controller
     // ============================================================
     public function fundReconciliation(Request $request)
     {
+        $filterYear = $request->filled('academic_year')
+            ? $this->normalizeYear($request->input('academic_year'))
+            : null;
 
-        $normalizedYear = $this->normalizeYear($c->academic_year);
+        $allCheques = CollectiveCheque::orderBy('date_received')->get();
 
-        $query = CollectiveCheque::query();
-        if ($request->filled('academic_year')) $query->where('academic_year', $request->input('academic_year'));
+        if ($filterYear) {
+            $allCheques = $allCheques->filter(
+                fn ($c) => $this->normalizeYear($c->academic_year) === $filterYear
+            )->values();
+        }
 
-        $rows = $query->orderBy('date_received')->get()->values()->map(function ($c, $i) {
+        $rows = $allCheques->values()->map(function ($c, $i) {
             $instNo = match ($c->installment_no) {
                 '1st' => 1, '2nd' => 2, '3rd' => 3, '4th' => 4, default => 1,
             };
@@ -130,21 +144,26 @@ class AuditReportsController extends Controller
             $normalizedYear = $this->normalizeYear($c->academic_year);
 
             $distributed = (float) DB::table('scholarships')
-            ->join('installments', 'installments.scholarship_id', '=', 'scholarships.id')
-            ->where('scholarships.scheme', $c->scholarship_program)
-            ->where('scholarships.academic_year', $normalizedYear)
-            ->where('installments.installment_no', $instNo)
-            ->where('installments.status', 'received')
-            ->sum('installments.amount');
+                ->join('installments', 'installments.scholarship_id', '=', 'scholarships.id')
+                ->where('scholarships.scheme', $c->scholarship_program)
+                ->where('scholarships.academic_year', $normalizedYear)
+                ->where('installments.installment_no', $instNo)
+                ->where('installments.status', 'received')
+                ->sum('installments.amount');
 
-            $recovered = (float) DB::table('recoveries')
-            ->join('scholarships', 'recoveries.scholarship_id', '=', 'scholarships.id')
-            ->where('scholarships.scheme', $c->scholarship_program)
-            ->where('scholarships.academic_year', $normalizedYear)
-            ->sum('recoveries.recovered_amount');
+            $recovered = 0;
+            if (DB::getSchemaBuilder()->hasTable('recoveries')) {
+                $recovered = (float) DB::table('recoveries')
+                    ->join('scholarships', 'recoveries.scholarship_id', '=', 'scholarships.id')
+                    ->where('scholarships.scheme', $c->scholarship_program)
+                    ->where('scholarships.academic_year', $normalizedYear)
+                    ->sum('recoveries.recovered_amount');
+            }
 
             $balance = (float) $c->amount_received - $distributed + $recovered - (float) $c->refunded_to_donor;
-            $status  = abs($balance) < 0.5 ? 'Reconciled' : ($balance > 0 ? 'Unspent / Refund Due' : 'Over-Distributed');
+            $status  = abs($balance) < 0.5
+                ? 'Reconciled'
+                : ($balance > 0 ? 'Unspent / Refund Due' : 'Over-Distributed');
 
             return [
                 's_no'                => $i + 1,
@@ -152,7 +171,7 @@ class AuditReportsController extends Controller
                 'cheque_no'           => $c->cheque_no,
                 'date_received'       => $c->date_received?->format('Y-m-d'),
                 'scholarship_program' => $c->scholarship_program,
-                'academic_year' => ['required', 'string', 'regex:/^\d{4}-\d{4}$/'],
+                'academic_year'       => $c->academic_year,
                 'installment_no'      => $c->installment_no,
                 'collective_amount'   => (float) $c->amount_received,
                 'distributed'         => $distributed,
@@ -167,10 +186,10 @@ class AuditReportsController extends Controller
         return response()->json([
             'rows' => $rows,
             'grand_total' => [
-                'collective' => $rows->sum('collective_amount'),
+                'collective'  => $rows->sum('collective_amount'),
                 'distributed' => $rows->sum('distributed'),
-                'recovered' => $rows->sum('recovered'),
-                'refunded' => $rows->sum('refunded_to_donor'),
+                'recovered'   => $rows->sum('recovered'),
+                'refunded'    => $rows->sum('refunded_to_donor'),
                 'net_unspent' => $rows->sum('net_unspent'),
             ],
         ]);
@@ -181,23 +200,36 @@ class AuditReportsController extends Controller
     // ============================================================
     public function bankForwarding(Request $request)
     {
+        $filterYear = $request->filled('academic_year')
+            ? $this->normalizeYear($request->input('academic_year'))
+            : null;
+
         $query = Scholarship::with('installments');
-        if ($request->filled('scheme'))        $query->where('scheme', $request->input('scheme'));
-        if ($request->filled('academic_year')) $query->where('academic_year', $request->input('academic_year'));
+
+        if ($request->filled('scheme')) {
+            $query->where('scheme', $request->input('scheme'));
+        }
 
         $rows = $query->orderBy('student_name')->get()->values()->map(function ($s, $i) {
             $inst = $s->installments->firstWhere('installment_no', 1);
             return [
-                's_no'         => $i + 1,
-                'student_name' => $s->student_name,
-                'father_name'  => $s->father_name,
-                'cnic'         => $s->cnic,
-                'roll_no'      => $s->student_id,
-                'scholarship'  => $s->scheme,
-                'cheque_no'    => $inst?->cheque_no,
-                'cheque_amount'=> (float) ($inst?->amount ?? 0),
+                's_no'          => $i + 1,
+                'student_name'  => $s->student_name,
+                'father_name'   => $s->father_name,
+                'cnic'          => $s->cnic,
+                'roll_no'       => $s->student_id,
+                'scholarship'   => $s->scheme,
+                'academic_year' => $s->academic_year,
+                'cheque_no'     => $inst?->cheque_no,
+                'cheque_amount' => (float) ($inst?->amount ?? 0),
             ];
         });
+
+        if ($filterYear) {
+            $rows = $rows->filter(
+                fn ($r) => $this->normalizeYear($r['academic_year']) === $filterYear
+            )->values();
+        }
 
         return response()->json([
             'rows' => $rows,
@@ -206,7 +238,7 @@ class AuditReportsController extends Controller
     }
 
     // ============================================================
-    // COLLECTIVE CHEQUE CRUD (for Fund Reconciliation data entry)
+    // COLLECTIVE CHEQUE CRUD
     // ============================================================
     public function storeCollective(Request $request)
     {
@@ -220,6 +252,10 @@ class AuditReportsController extends Controller
             'refunded_to_donor'   => 'nullable|numeric|min:0',
             'notes'               => 'nullable|string|max:1000',
         ]);
+
+        // Normalize year format on save
+        $data['academic_year'] = $this->normalizeYear($data['academic_year']);
+
         return response()->json(CollectiveCheque::create($data), 201);
     }
 
@@ -229,26 +265,31 @@ class AuditReportsController extends Controller
         return response()->noContent();
     }
 
-    /**
-     * Normalize year to "YYYY-YYYY" format.
-     * Accepts: "2025-26", "2025-2026", "2025", "25-26"
-     */
+    // ============================================================
+    // YEAR NORMALIZATION HELPER
+    // ============================================================
     private function normalizeYear(?string $year): string
     {
         if (!$year) return '';
+        $year = trim($year);
 
-        $digits = preg_replace('/\D/', '', $year);
+        // Match "YYYY-YYYY", "YYYY-YY", "YY-YY", "YY-YYYY"
+        if (preg_match('/^(\d{2,4})\s*[-–\/]\s*(\d{2,4})$/', $year, $m)) {
+            $start = (int) $m[1];
+            $end   = (int) $m[2];
 
-        if (strlen($digits) === 4) {
-            $start = (int) $digits;
-            return $start . '-' . ($start + 1);
+            if (strlen($m[1]) === 2) $start += 2000;
+            if (strlen($m[2]) === 2) $end   += 2000;
+            if ($end < $start) $end = $start + 1;
+
+            return $start . '-' . $end;
         }
-        if (strlen($digits) === 6) {
-            $start = (int) substr($digits, 0, 4);
+
+        // Single year "2025" or "25"
+        if (preg_match('/^(\d{2,4})$/', $year, $m)) {
+            $start = (int) $m[1];
+            if (strlen($m[1]) === 2) $start += 2000;
             return $start . '-' . ($start + 1);
-        }
-        if (strlen($digits) === 8) {
-            return substr($digits, 0, 4) . '-' . substr($digits, 4, 4);
         }
 
         return $year;
