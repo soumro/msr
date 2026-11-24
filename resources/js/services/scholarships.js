@@ -258,3 +258,15 @@ export const triggerBackupDownload = (kind) => {
 
 export const backupDownloadUrl = (filename) =>
     `/api/backup/download/${encodeURIComponent(filename)}`;
+
+// Audit reports
+export const fetchAuditDistribution = (params = {}) =>
+    api.get("/audit/distribution", { params }).then((r) => r.data);
+export const fetchAuditFundReconciliation = (params = {}) =>
+    api.get("/audit/fund-reconciliation", { params }).then((r) => r.data);
+export const fetchAuditBankForwarding = (params = {}) =>
+    api.get("/audit/bank-forwarding", { params }).then((r) => r.data);
+export const createCollectiveCheque = (payload) =>
+    api.post("/audit/collective-cheques", payload).then((r) => r.data);
+export const deleteCollectiveCheque = (id) =>
+    api.delete(`/audit/collective-cheques/${id}`);

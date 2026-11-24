@@ -178,6 +178,40 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                             }
                         />
                     </F>
+                    <F label="Father's Name">
+                        <input
+                            className="inp"
+                            value={form.father_name ?? ""}
+                            onChange={(e) => set("father_name", e.target.value)}
+                        />
+                    </F>
+
+                    <F label="Cheque Status">
+                        <select
+                            className="inp"
+                            value={form.cheque_status ?? "issued"}
+                            onChange={(e) =>
+                                set("cheque_status", e.target.value)
+                            }
+                        >
+                            <option value="issued">Issued</option>
+                            <option value="cleared">Cleared / Encashed</option>
+                            <option value="stale">Stale / Expired</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="recovered">Recovered</option>
+                        </select>
+                    </F>
+
+                    <F label="Receiver Signature Note">
+                        <input
+                            className="inp"
+                            value={form.receiver_sign ?? ""}
+                            onChange={(e) =>
+                                set("receiver_sign", e.target.value)
+                            }
+                            placeholder="e.g. Signed 12-Nov-2025"
+                        />
+                    </F>
                     <F label="CNIC">
                         <input
                             className="inp font-mono"

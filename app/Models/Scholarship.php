@@ -15,6 +15,7 @@ class Scholarship extends Model
     'funding_group', 'department',
     'approved_amount', 'cheque_no', 'received_date',
     'payment_status', 'renewal_status', 'notes', 'phone',
+    'father_name', 'cheque_status', 'receiver_sign',
     ];
 
     protected $casts = [
@@ -92,5 +93,10 @@ class Scholarship extends Model
             $this->payment_status = $status;
             $this->saveQuietly(); // don't fire the Auditable trait noise
         }
+    }
+
+    public function recoveries()
+    {
+        return $this->hasMany(Recovery::class);
     }
 }

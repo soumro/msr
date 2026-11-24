@@ -27,6 +27,7 @@ const NAV = [
         icon: "📜",
         requires: "manage",
     },
+    { to: "/audit-reports", label: "📑 Audit Reports", icon: "📑" },
     {
         to: "/settings/app",
         label: "App Settings",

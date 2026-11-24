@@ -22,6 +22,7 @@ import AppSettings from "./pages/AppSettings";
 import MultiRecordStudents from "./pages/MultiRecordStudents";
 import PendingInstallments from "./pages/PendingInstallments";
 import Backup from "./pages/Backup";
+import AuditReports from "./pages/AuditReports";
 
 const qc = new QueryClient({
     defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -123,6 +124,11 @@ export default function App() {
                                         <Route
                                             path="/settings/backup"
                                             element={<Backup />}
+                                        />
+
+                                        <Route
+                                            path="/audit-reports"
+                                            element={<AuditReports />}
                                         />
                                     </Route>
                                 </Routes>

@@ -173,7 +173,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::post('scholarships/{scholarship}/roll-over', [ScholarshipController::class, 'rollOver']);
 
-    });
+        Route::post('audit/collective-cheques',            [\App\Http\Controllers\Api\AuditReportsController::class, 'storeCollective']);
+        Route::delete('audit/collective-cheques/{collective}', [\App\Http\Controllers\Api\AuditReportsController::class, 'destroyCollective']);
+
+        });
 
     /*
     |----------------------------------------------------------------------
@@ -258,4 +261,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('audit-logs', [AuditLogController::class, 'index']);
         Route::get('audit-logs/{auditLog}', [AuditLogController::class, 'show']);
     });
+
+    Route::prefix('audit')->group(function () {
+    Route::get('distribution',      [\App\Http\Controllers\Api\AuditReportsController::class, 'distribution']);
+    Route::get('fund-reconciliation',[\App\Http\Controllers\Api\AuditReportsController::class, 'fundReconciliation']);
+    Route::get('bank-forwarding',   [\App\Http\Controllers\Api\AuditReportsController::class, 'bankForwarding']);
+});
 });
