@@ -71,7 +71,8 @@ class ScholarshipController extends Controller
 
     public function store(Request $request)
     {
-        $scholarship = Scholarship::create($this->validateData($request));
+        $data = $this->validateData($request);
+        $scholarship = Scholarship::create($data);
         app(DuplicateAidDetector::class)->rebuild();
         return response()->json($scholarship, 201);
     }
@@ -87,7 +88,6 @@ class ScholarshipController extends Controller
         $scholarship->update($this->validateData($request));
         $scholarship->syncPaymentStatus();
         app(DuplicateAidDetector::class)->rebuild();
-
         return response()->json($scholarship->fresh());
     }
 
@@ -208,10 +208,17 @@ class ScholarshipController extends Controller
             ], 422);
         }
 
+        $newCategory = (new Scholarship([
+            'student_id'    => $scholarship->student_id,
+            'scheme'        => $scholarship->scheme,
+            'academic_year' => $data['academic_year'],
+        ]))->deriveCategory();
+
         $new = Scholarship::create([
             'student_id'      => $scholarship->student_id,
             'student_name'    => $scholarship->student_name,
             'cnic'            => $scholarship->cnic,
+            'father_name'     => $scholarship->father_name,
             'scheme'          => $scholarship->scheme,
             'category'        => $data['category'],
             'academic_year'   => $data['academic_year'],
@@ -223,6 +230,7 @@ class ScholarshipController extends Controller
             'received_date'   => null,
             'payment_status'  => 'pending',
             'renewal_status'  => $data['renewal_status'],
+            'cheque_status'   => 'issued',
             'notes'           => "Rolled over from #{$scholarship->id} ({$scholarship->academic_year})"
                                 . ($scholarship->notes ? "\n\n" . $scholarship->notes : ''),
         ]);

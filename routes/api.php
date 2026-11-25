@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\BackupController;
+use App\Http\Controllers\Api\AuditReportsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -108,6 +109,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('reports/donor-wise',     [ReportsController::class, 'donorWise']);
     Route::get('reports/student-detail', [ReportsController::class, 'studentDetail']);
     Route::get('reports/pending-installments', [ReportsController::class, 'pendingInstallments']);
+
+    Route::get('audit/distribution-flat', [AuditReportsController::class, 'distributionFlat']);
+    Route::get('audit/executive-summary', [AuditReportsController::class, 'executiveSummary']);
 
     // Route::get('reports/student-wise',   [ReportsController::class, 'studentWise']);
     // Route::get('reports/year-wise',      [ReportsController::class, 'yearWise']);
@@ -263,8 +267,9 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('audit')->group(function () {
-    Route::get('distribution',      [\App\Http\Controllers\Api\AuditReportsController::class, 'distribution']);
-    Route::get('fund-reconciliation',[\App\Http\Controllers\Api\AuditReportsController::class, 'fundReconciliation']);
-    Route::get('bank-forwarding',   [\App\Http\Controllers\Api\AuditReportsController::class, 'bankForwarding']);
+    Route::get('distribution',      [AuditReportsController::class, 'distribution']);
+    Route::get('fund-reconciliation',[AuditReportsController::class, 'fundReconciliation']);
+    Route::get('bank-forwarding',   [AuditReportsController::class, 'bankForwarding']);
+    Route::get('audit/distribution-flat', [AuditReportsController::class, 'distributionFlat']);
 });
 });

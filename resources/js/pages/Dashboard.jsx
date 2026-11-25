@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchDashboard } from "../services/scholarships";
 import { LineChart, DonutChart, HorizontalBars } from "../components/Charts";
+import StatusBadge from "../components/StatusBadge";
 
 const fmt = (n) =>
     new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(
@@ -18,125 +19,125 @@ const YEAR_PALETTE = [
     "#f97316",
 ];
 
+const ACCENT_BORDER = {
+    purple: "border-l-purple-500",
+    indigo: "border-l-indigo-500",
+    violet: "border-l-violet-500",
+    emerald: "border-l-emerald-500",
+    amber: "border-l-amber-500",
+    rose: "border-l-rose-500",
+    slate: "border-l-slate-400",
+};
+
 export default function Dashboard() {
     const { data, isLoading, error } = useQuery({
         queryKey: ["dashboard"],
         queryFn: fetchDashboard,
     });
 
-    if (isLoading) return <Loading />;
-    if (error)
-        return <p className="text-rose-600">Failed to load dashboard.</p>;
+    if (isLoading) return <DashboardSkeleton />;
+    if (error) return <ErrorState />;
 
     const fy = data.current_fiscal_year;
     const prevFy = data.previous_fiscal_year;
     const fyStart = data.fiscal_year_start;
     const fyEnd = data.fiscal_year_end;
 
-    // ── FY section — approval + outstanding (by scholarship tag) ──
+    const startD = new Date(fyStart);
+    const endD = new Date(fyEnd);
+    const nowD = new Date();
+    const totalDays = Math.max(1, Math.ceil((endD - startD) / 86400000));
+    const elapsedDays = Math.max(0, Math.ceil((nowD - startD) / 86400000));
+    const remainingDays = Math.max(0, totalDays - elapsedDays);
+    const fyProgress = Math.min(100, (elapsedDays / totalDays) * 100);
+
     const fyCards = [
         {
-            label: `${fy} Approved`,
+            label: "Approved",
             value: "PKR " + fmt(data.fy_approved ?? 0),
-            sub: `${data.fy_records ?? 0} records`,
+            sub: (data.fy_records ?? 0) + " scholarship records",
             accent: "from-purple-600 to-purple-800",
             icon: "💰",
         },
         {
-            label: `${fy} Outstanding`,
+            label: "Outstanding",
             value: "PKR " + fmt(data.fy_pending ?? 0),
-            sub: "Pending installments",
+            sub: "Awaiting installment release",
             accent: "from-amber-500 to-orange-600",
             icon: "⏳",
         },
         {
-            label: `${fy} Renewals`,
+            label: "Cash In",
+            value: "PKR " + fmt(data.fy_received ?? 0),
+            sub: "Installments received this FY",
+            accent: "from-emerald-600 to-teal-700",
+            icon: "📥",
+        },
+        {
+            label: "Renewals",
             value: data.fy_renewals_due ?? 0,
             sub: "Due or submitted",
             accent: "from-rose-500 to-red-600",
             icon: "🔄",
         },
-        {
-            label: `${fy} Flags`,
-            value: data.fy_duplicate_flags ?? 0,
-            sub: "Duplicate aid pending",
-            accent:
-                (data.fy_duplicate_flags ?? 0)
-                    ? "from-red-500 to-rose-700"
-                    : "from-emerald-500 to-teal-600",
-            icon: "🚩",
-        },
     ];
 
-    // ── All-time overview — cash-in replaces "received this month" ──
     const globalCards = [
         {
             label: "Total Approved",
             value: "PKR " + fmt(data.total_approved),
-            sub: "All schemes · all years",
-            accent: "from-indigo-600 to-purple-700",
+            sub: "All years · all schemes",
             icon: "📚",
-        },
-        {
-            label: "Total Records",
-            value: fmt(data.total_records ?? 0),
-            sub: "Scholarship entries",
-            accent: "from-violet-500 to-purple-600",
-            icon: "📊",
+            color: "purple",
         },
         {
             label: "Beneficiaries",
             value: fmt(data.beneficiaries),
             sub: "Unique students",
-            accent: "from-fuchsia-600 to-purple-700",
             icon: "👥",
+            color: "indigo",
+        },
+        {
+            label: "Total Records",
+            value: fmt(data.total_records ?? 0),
+            sub: "Scholarship entries",
+            icon: "📊",
+            color: "violet",
         },
         {
             label: "Disbursed",
             value: "PKR " + fmt(data.total_disbursed),
-            sub: "All years · paid",
-            accent: "from-emerald-600 to-teal-700",
+            sub: "Fully paid records",
             icon: "💵",
+            color: "emerald",
         },
         {
-            label: `${fy} Cash In`,
-            value: "PKR " + fmt(data.fy_received_by_date ?? 0),
-            sub: "Received in this FY",
-            accent: "from-emerald-600 to-green-700",
-            icon: "📥",
-        },
-        {
-            label: `${prevFy} Cash In`,
-            value: "PKR " + fmt(data.previous_fy_received_by_date ?? 0),
-            sub: "Received in previous FY",
-            accent: "from-slate-500 to-slate-700",
-            icon: "📥",
-        },
-        {
-            label: "Pending Payments",
+            label: "Pending",
             value: "PKR " + fmt(data.pending_amount),
             sub: "Awaiting release",
-            accent: "from-amber-500 to-yellow-600",
             icon: "📌",
+            color: "amber",
+        },
+        {
+            label: `${prevFy || "Prev"} Cash In`,
+            value: "PKR " + fmt(data.previous_fy_received_by_date ?? 0),
+            sub: "Previous fiscal year",
+            icon: "📥",
+            color: "slate",
         },
         {
             label: "Duplicate Flags",
             value: fmt(data.duplicate_flags),
-            sub: "All years · pending",
-            accent: data.duplicate_flags
-                ? "from-rose-500 to-red-600"
-                : "from-emerald-500 to-teal-600",
+            sub: "Pending review",
             icon: "🚩",
+            color: data.duplicate_flags > 0 ? "rose" : "emerald",
         },
         {
             label: "Cheques Missing",
             value: fmt(data.cheques_missing ?? 0),
-            sub: "Paid without cheque no.",
-            accent:
-                (data.cheques_missing ?? 0)
-                    ? "from-orange-500 to-amber-600"
-                    : "from-emerald-500 to-teal-600",
+            sub: "Paid · no cheque number",
             icon: "🧾",
+            color: (data.cheques_missing ?? 0) > 0 ? "amber" : "emerald",
         },
     ];
 
@@ -156,175 +157,260 @@ export default function Dashboard() {
         { beneficiaries: 0, records: 0, amount: 0, received: 0 },
     );
 
+    const maxYearAmount = Math.max(
+        1,
+        ...(data.by_year ?? []).map((y) => y.amount),
+    );
+
     return (
         <div className="space-y-6">
-            {/* ── Fiscal year banner ── */}
-            <div className="bg-gradient-to-r from-purple-900 to-purple-700 text-white rounded-2xl shadow-lg p-5">
-                <div className="flex flex-wrap items-center gap-4">
-                    <div className="text-3xl">📅</div>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-[11px] uppercase tracking-widest font-bold opacity-80">
-                            Current Fiscal Year
-                        </p>
-                        <h2 className="text-2xl font-extrabold tracking-tight">
-                            {fy}
-                        </h2>
-                        <p className="text-xs text-white/70 mt-0.5">
-                            {new Date(fyStart).toLocaleDateString("en-PK", {
-                                day: "numeric",
-                                month: "long",
-                                year: "numeric",
-                            })}
-                            {" → "}
-                            {new Date(fyEnd).toLocaleDateString("en-PK", {
-                                day: "numeric",
-                                month: "long",
-                                year: "numeric",
-                            })}
-                        </p>
+            {/* ============== SECTION 1: FY BANNER ============== */}
+            <div className="relative bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 text-white rounded-2xl shadow-xl overflow-hidden">
+                <div className="absolute -top-24 -right-24 w-72 h-72 bg-white/5 rounded-full pointer-events-none" />
+                <div className="absolute -bottom-32 -left-24 w-80 h-80 bg-white/5 rounded-full pointer-events-none" />
+
+                <div className="relative px-6 py-6">
+                    <div className="flex flex-wrap items-start gap-6">
+                        <div className="flex-1 min-w-[280px]">
+                            <span className="inline-block text-[10px] uppercase tracking-widest font-extrabold bg-white/15 px-2.5 py-1 rounded-full mb-2">
+                                Current Fiscal Year
+                            </span>
+                            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
+                                {fy}
+                            </h1>
+                            <p className="text-sm text-white/70 mt-1.5">
+                                {new Date(fyStart).toLocaleDateString("en-PK", {
+                                    day: "numeric",
+                                    month: "long",
+                                    year: "numeric",
+                                })}
+                                <span className="mx-2 text-white/40">→</span>
+                                {new Date(fyEnd).toLocaleDateString("en-PK", {
+                                    day: "numeric",
+                                    month: "long",
+                                    year: "numeric",
+                                })}
+                            </p>
+                        </div>
+                        <div className="flex gap-8">
+                            <div>
+                                <p className="text-[10px] uppercase tracking-widest font-bold text-white/60 mb-1">
+                                    Elapsed
+                                </p>
+                                <p className="text-2xl font-extrabold tabular-nums">
+                                    {elapsedDays}
+                                    <span className="text-xs font-normal text-white/50 ml-1">
+                                        days
+                                    </span>
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] uppercase tracking-widest font-bold text-white/60 mb-1">
+                                    Remaining
+                                </p>
+                                <p className="text-2xl font-extrabold text-amber-300 tabular-nums">
+                                    {remainingDays}
+                                    <span className="text-xs font-normal text-white/50 ml-1">
+                                        days
+                                    </span>
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                    <div className="text-right">
-                        <p className="text-[11px] uppercase tracking-widest font-bold opacity-80">
-                            Months
-                        </p>
-                        <p className="text-xs font-mono mt-1">
-                            {(data.fiscal_year_months ?? []).join(" · ")}
-                        </p>
+
+                    <div className="mt-6">
+                        <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-white/70 mb-1.5">
+                            <span>FY Progress</span>
+                            <span>{fyProgress.toFixed(1)}%</span>
+                        </div>
+                        <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-gradient-to-r from-amber-300 to-amber-500 rounded-full transition-all"
+                                style={{ width: `${fyProgress}%` }}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* ── Current FY KPI cards ── */}
+            {/* ============== SECTION 2: FY KPIs ============== */}
             <div>
-                <h3 className="text-sm font-bold text-purple-900 uppercase tracking-wide mb-2">
-                    This Fiscal Year — {fy}
-                </h3>
+                <SectionHeader
+                    title={`This Fiscal Year — ${fy}`}
+                    subtitle="Metrics specific to the current period"
+                />
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     {fyCards.map((c) => (
                         <div
                             key={c.label}
-                            className={`bg-gradient-to-br ${c.accent} rounded-2xl p-4 text-white shadow-lg relative overflow-hidden`}
+                            className={`relative bg-gradient-to-br ${c.accent} rounded-2xl p-5 text-white shadow-lg hover:shadow-2xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden`}
                         >
-                            <div className="absolute top-2 right-3 text-3xl opacity-20">
-                                {c.icon}
+                            <div className="absolute -top-6 -right-6 w-24 h-24 bg-white/10 rounded-full pointer-events-none" />
+                            <div className="absolute -bottom-12 -right-12 w-32 h-32 bg-white/5 rounded-full pointer-events-none" />
+                            <div className="relative">
+                                <div className="text-3xl mb-3">{c.icon}</div>
+                                <p className="text-[10px] uppercase tracking-widest font-extrabold opacity-90">
+                                    {c.label}
+                                </p>
+                                <p className="text-2xl font-extrabold mt-1 tracking-tight tabular-nums">
+                                    {c.value}
+                                </p>
+                                <p className="text-[11px] opacity-80 mt-1">
+                                    {c.sub}
+                                </p>
                             </div>
-                            <p className="text-[10px] uppercase tracking-widest font-extrabold opacity-90">
-                                {c.label}
-                            </p>
-                            <p className="text-2xl font-extrabold mt-2 tracking-tight">
-                                {c.value}
-                            </p>
-                            <p className="text-[11px] opacity-80 mt-1">
-                                {c.sub}
-                            </p>
                         </div>
                     ))}
                 </div>
             </div>
 
-            {/* ── All-time overview — includes Current + Previous FY Cash In ── */}
+            {/* ============== SECTION 3: OVERVIEW ============== */}
             <div>
-                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-2">
-                    Overview — All Time
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <SectionHeader
+                    title="Overview"
+                    subtitle="All-time totals across every scheme and academic year"
+                />
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {globalCards.map((c) => (
                         <div
                             key={c.label}
-                            className={`bg-gradient-to-br ${c.accent} rounded-xl p-3 text-white shadow relative overflow-hidden`}
+                            className={`bg-white rounded-xl border border-slate-200 border-l-4 ${ACCENT_BORDER[c.color]} p-4 hover:shadow-md transition-shadow relative overflow-hidden`}
                         >
-                            <div className="absolute top-1 right-2 text-2xl opacity-20">
+                            <div className="absolute -top-2 -right-2 text-5xl opacity-[0.05] select-none pointer-events-none">
                                 {c.icon}
                             </div>
-                            <p className="text-[10px] uppercase tracking-widest font-extrabold opacity-90">
-                                {c.label}
-                            </p>
-                            <p className="text-xl font-extrabold mt-1">
-                                {c.value}
-                            </p>
-                            <p className="text-[10px] opacity-80 mt-0.5">
-                                {c.sub}
-                            </p>
+                            <div className="relative">
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                    <span className="text-[13px]">
+                                        {c.icon}
+                                    </span>
+                                    <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">
+                                        {c.label}
+                                    </p>
+                                </div>
+                                <p className="text-lg sm:text-xl font-extrabold text-slate-800 tabular-nums leading-tight">
+                                    {c.value}
+                                </p>
+                                <p className="text-[10px] text-slate-500 mt-0.5">
+                                    {c.sub}
+                                </p>
+                            </div>
                         </div>
                     ))}
                 </div>
             </div>
 
-            {/* ── Year-Wise Summary — with Received-by-Date column ── */}
-            <Card
-                title="Year-Wise Summary"
-                subtitle="Approved by scholarship year; Received by actual installment date (July–June)."
-            >
+            {/* ============== SECTION 4: YEAR-WISE TABLE ============== */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                        <h3 className="font-extrabold text-slate-900 text-sm tracking-tight">
+                            Year-Wise Summary
+                        </h3>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                            Approved by scholarship year · Received by
+                            installment date (July–June)
+                        </p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">
+                            Cycles
+                        </p>
+                        <p className="text-xl font-extrabold text-slate-800">
+                            {(data.by_year ?? []).length}
+                        </p>
+                    </div>
+                </div>
+
                 {(data.by_year ?? []).length === 0 ? (
-                    <p className="text-sm text-slate-500 text-center py-6">
-                        No records yet.
-                    </p>
+                    <EmptyState
+                        icon="📊"
+                        title="No scholarship records yet"
+                        message="Add or import scholarships to see year-wise summaries here."
+                    />
                 ) : (
                     <div className="overflow-auto">
                         <table className="w-full text-sm">
-                            <thead className="bg-slate-50 text-slate-600 text-[11px] uppercase tracking-wide">
+                            <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase tracking-wider">
                                 <tr>
-                                    <th className="text-left px-3 py-2">
+                                    <th className="text-left px-5 py-3">
                                         Fiscal Year
                                     </th>
-                                    <th className="text-right px-3 py-2">
-                                        Beneficiaries
+                                    <th className="text-right px-5 py-3">
+                                        Students
                                     </th>
-                                    <th className="text-right px-3 py-2">
+                                    <th className="text-right px-5 py-3">
                                         Records
                                     </th>
-                                    <th className="text-right px-3 py-2">
+                                    <th className="text-right px-5 py-3 w-1/3">
                                         Approved
                                     </th>
-                                    <th className="text-right px-3 py-2 text-emerald-700">
+                                    <th className="text-right px-5 py-3">
                                         Received
                                     </th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {(data.by_year ?? []).map((y) => (
-                                    <tr
-                                        key={y.year}
-                                        className={`border-t hover:bg-purple-50/40 ${y.is_current ? "bg-purple-50" : ""}`}
-                                    >
-                                        <td className="px-3 py-2 font-semibold whitespace-nowrap">
-                                            {y.year}
-                                            {y.is_current && (
-                                                <span className="ml-2 text-[9px] font-bold bg-purple-600 text-white px-1.5 py-0.5 rounded-full">
-                                                    CURRENT
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums">
-                                            {fmt(y.beneficiaries)}
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums">
-                                            {fmt(y.records)}
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums font-bold text-purple-800">
-                                            {fmt(y.amount)}
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums font-bold text-emerald-700">
-                                            {fmt(y.received_by_date ?? 0)}
-                                        </td>
-                                    </tr>
-                                ))}
+                                {(data.by_year ?? []).map((y) => {
+                                    const barPct =
+                                        (y.amount / maxYearAmount) * 100;
+                                    return (
+                                        <tr
+                                            key={y.year}
+                                            className={`border-t border-slate-100 transition-colors ${y.is_current ? "bg-purple-50/50" : "hover:bg-slate-50/60"}`}
+                                        >
+                                            <td className="px-5 py-3 whitespace-nowrap">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-slate-800">
+                                                        {y.year}
+                                                    </span>
+                                                    {y.is_current && (
+                                                        <span className="text-[9px] font-bold bg-purple-600 text-white px-1.5 py-0.5 rounded-full">
+                                                            CURRENT
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-3 text-right tabular-nums text-slate-700">
+                                                {fmt(y.beneficiaries)}
+                                            </td>
+                                            <td className="px-5 py-3 text-right tabular-nums text-slate-700">
+                                                {fmt(y.records)}
+                                            </td>
+                                            <td className="px-5 py-3">
+                                                <div className="flex items-center justify-end gap-3">
+                                                    <div className="flex-1 max-w-[200px] h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-gradient-to-r from-purple-500 to-purple-700 rounded-full"
+                                                            style={{
+                                                                width: `${barPct}%`,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <span className="text-sm font-bold text-purple-800 tabular-nums whitespace-nowrap min-w-[90px] text-right">
+                                                        {fmt(y.amount)}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-3 text-right tabular-nums font-semibold text-emerald-700">
+                                                {fmt(y.received_by_date ?? 0)}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                             <tfoot>
-                                <tr className="bg-purple-900 text-white font-bold">
-                                    <td className="px-3 py-2 text-right">
+                                <tr className="bg-gradient-to-r from-purple-900 to-purple-800 text-white font-bold">
+                                    <td
+                                        className="px-5 py-3.5 text-right"
+                                        colSpan={3}
+                                    >
                                         TOTAL
                                     </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
-                                        {fmt(totals.beneficiaries)}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
-                                        {fmt(totals.records)}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
+                                    <td className="px-5 py-3.5 text-right tabular-nums">
                                         {fmt(totals.amount)}
                                     </td>
-                                    <td className="px-3 py-2 text-right tabular-nums text-emerald-300">
+                                    <td className="px-5 py-3.5 text-right tabular-nums text-emerald-300">
                                         {fmt(totals.received)}
                                     </td>
                                 </tr>
@@ -332,93 +418,179 @@ export default function Dashboard() {
                         </table>
                     </div>
                 )}
-            </Card>
-
-            {/* ── Scheme / Donor / Year donut ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <Card title="Scheme-wise Distribution">
-                    <HorizontalBars
-                        data={Object.entries(data.by_scheme ?? {})
-                            .map(([label, value]) => ({ label, value }))
-                            .sort((a, b) => b.value - a.value)
-                            .slice(0, 8)}
-                    />
-                </Card>
-                <Card title="Donor-wise Distribution">
-                    <HorizontalBars
-                        data={Object.entries(data.by_donor ?? {})
-                            .map(([label, value]) => ({ label, value }))
-                            .sort((a, b) => b.value - a.value)
-                            .slice(0, 8)}
-                    />
-                </Card>
-                <Card title="Fiscal Year Donut">
-                    {yearSegments.length > 0 ? (
-                        <DonutChart segments={yearSegments} />
-                    ) : (
-                        <p className="text-sm text-slate-500 text-center py-8">
-                            No records yet.
-                        </p>
-                    )}
-                </Card>
             </div>
 
-            <Card title="Monthly Received Amount (Last 12 Months)">
+            {/* ============== SECTION 5: DISTRIBUTION ============== */}
+            <div>
+                <SectionHeader
+                    title="Distribution"
+                    subtitle="Where the money comes from and when"
+                />
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <Card
+                        title="By Scheme"
+                        subtitle={`${Object.keys(data.by_scheme ?? {}).length} active schemes`}
+                    >
+                        <HorizontalBars
+                            data={Object.entries(data.by_scheme ?? {})
+                                .map(([label, value]) => ({ label, value }))
+                                .sort((a, b) => b.value - a.value)
+                                .slice(0, 8)}
+                            color="purple"
+                        />
+                    </Card>
+                    <Card
+                        title="By Donor"
+                        subtitle={`${Object.keys(data.by_donor ?? {}).length} active donors`}
+                    >
+                        <HorizontalBars
+                            data={Object.entries(data.by_donor ?? {})
+                                .map(([label, value]) => ({ label, value }))
+                                .sort((a, b) => b.value - a.value)
+                                .slice(0, 8)}
+                            color="amber"
+                        />
+                    </Card>
+                    <Card
+                        title="Fiscal Year Split"
+                        subtitle="Approved amount per FY"
+                    >
+                        {yearSegments.length > 0 ? (
+                            <DonutChart segments={yearSegments} />
+                        ) : (
+                            <EmptyState
+                                small
+                                icon="🍩"
+                                title="No data"
+                                message="Import scholarships first."
+                            />
+                        )}
+                    </Card>
+                </div>
+            </div>
+
+            {/* ============== SECTION 6: MONTHLY TREND ============== */}
+            <Card
+                title="Monthly Received Amount"
+                subtitle="Rolling 12-month cash inflow from installments"
+            >
                 <LineChart data={data.monthly_received ?? []} />
             </Card>
 
-            <Card title="Renewals Due">
-                <table className="w-full text-sm">
-                    <thead className="text-slate-500 text-[10px] uppercase tracking-wider">
-                        <tr>
-                            <th className="text-left py-2">Student</th>
-                            <th className="text-left py-2">Scheme</th>
-                            <th className="text-left py-2">Year</th>
-                            <th className="text-right py-2">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {(data.renewals ?? []).slice(0, 10).map((r) => (
-                            <tr
-                                key={r.id}
-                                className="border-t border-slate-100 hover:bg-purple-50/40"
-                            >
-                                <td className="py-2 font-medium truncate max-w-[150px]">
-                                    {r.student_name}
-                                </td>
-                                <td className="py-2 text-slate-600 text-xs">
-                                    {r.scheme}
-                                </td>
-                                <td className="py-2 text-slate-600 text-xs">
-                                    {r.academic_year}
-                                </td>
-                                <td className="py-2 text-right tabular-nums">
-                                    {fmt(r.approved_amount)}
-                                </td>
-                            </tr>
-                        ))}
-                        {(data.renewals ?? []).length === 0 && (
-                            <tr>
-                                <td
-                                    colSpan={4}
-                                    className="py-6 text-center text-slate-500 text-xs"
-                                >
-                                    No renewals due.
-                                </td>
-                            </tr>
+            {/* ============== SECTION 7: RENEWALS ============== */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                        <h3 className="font-extrabold text-slate-900 text-sm tracking-tight flex items-center gap-2">
+                            Renewals Due
+                            <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">
+                                {(data.renewals ?? []).length}
+                            </span>
+                        </h3>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                            Students awaiting renewal approval or payment
+                        </p>
+                    </div>
+                </div>
+
+                {(data.renewals ?? []).length === 0 ? (
+                    <EmptyState
+                        icon="✓"
+                        title="All caught up"
+                        message="No renewals currently pending."
+                        tone="green"
+                    />
+                ) : (
+                    <div className="overflow-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase tracking-wider">
+                                <tr>
+                                    <th className="text-left px-5 py-2.5">
+                                        Student
+                                    </th>
+                                    <th className="text-left px-5 py-2.5">
+                                        Scheme
+                                    </th>
+                                    <th className="text-left px-5 py-2.5">
+                                        Year
+                                    </th>
+                                    <th className="text-left px-5 py-2.5">
+                                        Status
+                                    </th>
+                                    <th className="text-right px-5 py-2.5">
+                                        Amount
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(data.renewals ?? []).slice(0, 10).map((r) => (
+                                    <tr
+                                        key={r.id}
+                                        className="border-t border-slate-100 hover:bg-slate-50/60"
+                                    >
+                                        <td className="px-5 py-2.5">
+                                            <div className="flex flex-col">
+                                                <span className="font-medium text-slate-800 truncate max-w-[200px]">
+                                                    {r.student_name}
+                                                </span>
+                                                <span className="text-[10px] text-slate-500 font-mono">
+                                                    {r.student_id}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-5 py-2.5 text-xs text-slate-700">
+                                            {r.scheme}
+                                        </td>
+                                        <td className="px-5 py-2.5 text-xs text-slate-600">
+                                            {r.academic_year}
+                                        </td>
+                                        <td className="px-5 py-2.5">
+                                            <StatusBadge
+                                                kind="renewal"
+                                                value={r.renewal_status}
+                                            />
+                                        </td>
+                                        <td className="px-5 py-2.5 text-right tabular-nums font-semibold text-slate-800">
+                                            {fmt(r.approved_amount)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {(data.renewals ?? []).length > 10 && (
+                            <div className="px-5 py-2.5 text-center text-xs text-slate-500 border-t bg-slate-50">
+                                Showing 10 of {data.renewals.length} renewals
+                            </div>
                         )}
-                    </tbody>
-                </table>
-            </Card>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ============================================================
+// Shared helpers
+// ============================================================
+
+function SectionHeader({ title, subtitle }) {
+    return (
+        <div className="mb-3">
+            <h2 className="text-[11px] font-extrabold text-slate-900 uppercase tracking-widest">
+                {title}
+            </h2>
+            {subtitle && (
+                <p className="text-[11px] text-slate-500 mt-0.5">{subtitle}</p>
+            )}
         </div>
     );
 }
 
 function Card({ title, subtitle, children }) {
     return (
-        <section className="bg-white rounded-2xl border border-purple-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-white">
-                <h3 className="font-extrabold text-purple-950 text-sm tracking-tight">
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100">
+                <h3 className="font-extrabold text-slate-900 text-sm tracking-tight">
                     {title}
                 </h3>
                 {subtitle && (
@@ -427,20 +599,61 @@ function Card({ title, subtitle, children }) {
                     </p>
                 )}
             </div>
-            <div className="p-5">{children}</div>
+            <div className="p-4">{children}</div>
         </section>
     );
 }
 
-function Loading() {
+function EmptyState({ icon, title, message, tone = "gray", small = false }) {
+    const toneCls =
+        tone === "green"
+            ? "text-emerald-600 bg-emerald-50"
+            : "text-slate-400 bg-slate-50";
+    const sizeCls = small ? "w-10 h-10 text-xl" : "w-14 h-14 text-2xl";
+    const padCls = small ? "py-6" : "py-12";
+
     return (
-        <div className="flex items-center justify-center py-20">
-            <div className="text-center">
-                <div className="w-12 h-12 mx-auto rounded-full border-4 border-purple-100 border-t-purple-600 animate-spin"></div>
-                <p className="text-sm text-slate-500 mt-4">
-                    Loading dashboard…
-                </p>
+        <div className={`${padCls} text-center px-6`}>
+            <div
+                className={`${sizeCls} mx-auto rounded-full ${toneCls} grid place-items-center mb-3`}
+            >
+                {icon}
             </div>
+            <p className="text-sm font-semibold text-slate-700">{title}</p>
+            <p className="text-[11px] text-slate-500 mt-1">{message}</p>
+        </div>
+    );
+}
+
+function DashboardSkeleton() {
+    return (
+        <div className="space-y-6 animate-pulse">
+            <div className="h-48 bg-slate-200 rounded-2xl" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-36 bg-slate-200 rounded-2xl" />
+                ))}
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                    <div key={i} className="h-24 bg-slate-200 rounded-xl" />
+                ))}
+            </div>
+            <div className="h-64 bg-slate-200 rounded-2xl" />
+        </div>
+    );
+}
+
+function ErrorState() {
+    return (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-10 text-center">
+            <div className="text-4xl mb-3">⚠️</div>
+            <p className="font-semibold text-rose-800">
+                Could not load dashboard
+            </p>
+            <p className="text-xs text-rose-600 mt-1">
+                Check the browser console or refresh the page.
+            </p>
         </div>
     );
 }

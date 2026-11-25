@@ -99,4 +99,19 @@ class Scholarship extends Model
     {
         return $this->hasMany(Recovery::class);
     }
+
+    /**
+     * Derive category from scholarship history.
+     * Returns "renewal" if this student had the same scheme in any prior year,
+     * otherwise "fresh".
+     */
+    public function deriveCategory(): string
+    {
+        $priorExists = self::where('student_id', $this->student_id)
+            ->where('scheme', $this->scheme)
+            ->where('academic_year', '<', $this->academic_year)
+            ->exists();
+
+        return $priorExists ? 'renewal' : 'fresh';
+    }
 }

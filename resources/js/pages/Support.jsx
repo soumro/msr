@@ -11,10 +11,10 @@ import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 
 const CAT = {
-    announcement: "bg-blue-100 text-blue-800 border-blue-200",
-    deadline: "bg-amber-100 text-amber-800 border-amber-200",
-    guidance: "bg-purple-100 text-purple-800 border-purple-200",
-    renewal: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    announcement: "bg-blue-50 text-blue-700 border-blue-200",
+    deadline: "bg-amber-50 text-amber-700 border-amber-200",
+    guidance: "bg-purple-50 text-purple-700 border-purple-200",
+    renewal: "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
 
 const fmtDate = (s) =>
@@ -30,7 +30,6 @@ export default function Support() {
     const toast = useToast();
     const confirm = useConfirm();
     const qc = useQueryClient();
-
     const [category, setCategory] = useState("");
     const [published, setPublished] = useState("");
     const [editing, setEditing] = useState(null);
@@ -52,9 +51,8 @@ export default function Support() {
         mutationFn: deleteAnnouncement,
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["announcements"] });
-            toast.success("Announcement deleted");
+            toast.success("Deleted");
         },
-        onError: () => toast.error("Delete failed"),
     });
 
     const save = useMutation({
@@ -72,31 +70,21 @@ export default function Support() {
 
     return (
         <div className="space-y-4">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-                <div className="px-5 py-4 border-b flex flex-wrap items-center gap-2">
-                    <h2 className="font-semibold mr-2">
-                        Student Support Content
-                    </h2>
-                    <span className="text-xs text-slate-500">
-                        {data.length} item{data.length === 1 ? "" : "s"}
-                    </span>
-                    <div className="flex-1" />
-                    <button
-                        className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-sm font-semibold"
-                        onClick={() => {
-                            setEditing(null);
-                            setOpen(true);
-                        }}
-                    >
-                        + Add Item
-                    </button>
-                </div>
+            <div>
+                <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                    Student Support
+                </h1>
+                <p className="text-sm text-slate-500 mt-1">
+                    Announcements, deadlines, guidance, and renewal information
+                </p>
+            </div>
 
-                <div className="px-5 py-3 border-b flex flex-wrap gap-2 bg-slate-50">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b border-slate-100">
                     <select
-                        className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
+                        className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
                     >
                         <option value="">All categories</option>
                         <option value="announcement">Announcement</option>
@@ -105,146 +93,148 @@ export default function Support() {
                         <option value="renewal">Renewal Information</option>
                     </select>
                     <select
-                        className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
                         value={published}
                         onChange={(e) => setPublished(e.target.value)}
+                        className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
                     >
                         <option value="">All</option>
                         <option value="published">Published</option>
                         <option value="draft">Unpublished</option>
                     </select>
                     <button
-                        className="border border-slate-300 px-3 py-2 rounded-lg text-sm hover:bg-slate-100"
                         onClick={() => {
-                            setCategory("");
-                            setPublished("");
+                            setEditing(null);
+                            setOpen(true);
                         }}
+                        className="ml-auto bg-purple-700 hover:bg-purple-800 text-white px-4 py-2 rounded-lg text-sm font-bold"
                     >
-                        Clear
+                        + Add Item
                     </button>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wide">
-                            <tr>
-                                <th className="text-left px-4 py-2">Title</th>
-                                <th className="text-left px-4 py-2">
-                                    Category
-                                </th>
-                                <th className="text-left px-4 py-2">
-                                    Deadline
-                                </th>
-                                <th className="text-left px-4 py-2">State</th>
-                                <th className="text-left px-4 py-2">
-                                    Documents
-                                </th>
-                                <th className="text-left px-4 py-2">Content</th>
-                                <th className="text-right px-4 py-2">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {isLoading && (
+                {isLoading ? (
+                    <div className="p-8 text-center text-sm text-slate-500">
+                        Loading…
+                    </div>
+                ) : data.length === 0 ? (
+                    <div className="py-16 text-center">
+                        <div className="w-16 h-16 mx-auto rounded-full bg-slate-50 grid place-items-center text-3xl mb-4">
+                            🎓
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-800">
+                            No content yet
+                        </h3>
+                        <p className="text-sm text-slate-500 mt-1">
+                            Add announcements, deadlines, or guidance for
+                            students.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="overflow-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase tracking-wider">
                                 <tr>
-                                    <td
-                                        colSpan={7}
-                                        className="p-6 text-center text-slate-500"
-                                    >
-                                        Loading…
-                                    </td>
-                                </tr>
-                            )}
-                            {!isLoading && data.length === 0 && (
-                                <tr>
-                                    <td
-                                        colSpan={7}
-                                        className="p-6 text-center text-slate-500"
-                                    >
-                                        No student support content yet.
-                                    </td>
-                                </tr>
-                            )}
-                            {data.map((a) => (
-                                <tr key={a.id} className="border-t align-top">
-                                    <td className="px-4 py-2 font-semibold max-w-[260px]">
-                                        {a.title}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                        <span
-                                            className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${CAT[a.category]}`}
+                                    {[
+                                        "Title",
+                                        "Category",
+                                        "Deadline",
+                                        "State",
+                                        "Documents",
+                                        "Content",
+                                        "Actions",
+                                    ].map((h) => (
+                                        <th
+                                            key={h}
+                                            className="text-left px-4 py-2.5"
                                         >
-                                            {a.category}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">
-                                        {a.deadline ? (
-                                            fmtDate(a.deadline)
-                                        ) : (
-                                            <span className="text-slate-400">
-                                                —
+                                            {h}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.map((a) => (
+                                    <tr
+                                        key={a.id}
+                                        className="border-t border-slate-100 hover:bg-slate-50/70 align-top"
+                                    >
+                                        <td className="px-4 py-2.5 font-semibold text-slate-800 max-w-[240px]">
+                                            {a.title}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            <span
+                                                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border uppercase tracking-wider ${CAT[a.category]}`}
+                                            >
+                                                {a.category}
                                             </span>
-                                        )}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                        <span
-                                            className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                                                a.published
-                                                    ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                                                    : "bg-slate-100 text-slate-700 border-slate-200"
-                                            }`}
-                                        >
-                                            {a.published
-                                                ? "Published"
-                                                : "Draft"}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-2">
-                                        <button
-                                            onClick={() => setDocsFor(a)}
-                                            className="text-xs font-semibold text-emerald-700 hover:underline whitespace-nowrap"
-                                        >
-                                            📎 Manage
-                                        </button>
-                                    </td>
-                                    <td className="px-4 py-2 max-w-[340px] text-xs text-slate-600">
-                                        {a.body.slice(0, 140)}
-                                        {a.body.length > 140 ? "…" : ""}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                        <div className="flex gap-2 justify-end">
-                                            <button
-                                                className="text-blue-700 text-xs font-semibold hover:underline"
-                                                onClick={() => {
-                                                    setEditing(a);
-                                                    setOpen(true);
-                                                }}
+                                        </td>
+                                        <td className="px-4 py-2.5 font-mono text-xs whitespace-nowrap">
+                                            {a.deadline
+                                                ? fmtDate(a.deadline)
+                                                : "—"}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            <span
+                                                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border uppercase tracking-wider ${
+                                                    a.published
+                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                                        : "bg-slate-100 text-slate-600 border-slate-200"
+                                                }`}
                                             >
-                                                Edit
-                                            </button>
+                                                {a.published
+                                                    ? "Published"
+                                                    : "Draft"}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-2.5">
                                             <button
-                                                className="text-red-700 text-xs font-semibold hover:underline"
-                                                onClick={async () => {
-                                                    const ok = await confirm({
-                                                        title: "Delete this item?",
-                                                        message:
-                                                            "This will also delete any attached documents.",
-                                                        confirmLabel: "Delete",
-                                                        danger: true,
-                                                    });
-                                                    if (ok) del.mutate(a.id);
-                                                }}
+                                                onClick={() => setDocsFor(a)}
+                                                className="text-xs font-bold text-purple-700 hover:bg-purple-50 px-2 py-1 rounded"
                                             >
-                                                Delete
+                                                📎 Manage
                                             </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                                        </td>
+                                        <td className="px-4 py-2.5 max-w-[300px] text-xs text-slate-600">
+                                            {a.body.slice(0, 100)}
+                                            {a.body.length > 100 ? "…" : ""}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            <div className="flex gap-1">
+                                                <button
+                                                    onClick={() => {
+                                                        setEditing(a);
+                                                        setOpen(true);
+                                                    }}
+                                                    className="text-xs font-bold text-blue-700 hover:bg-blue-50 px-2 py-1 rounded"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button
+                                                    onClick={async () => {
+                                                        const ok =
+                                                            await confirm({
+                                                                title: "Delete?",
+                                                                message:
+                                                                    "Also deletes attached documents.",
+                                                                confirmLabel:
+                                                                    "Delete",
+                                                                danger: true,
+                                                            });
+                                                        if (ok)
+                                                            del.mutate(a.id);
+                                                    }}
+                                                    className="text-xs font-bold text-rose-700 hover:bg-rose-50 px-2 py-1 rounded"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
 
             {open && (
@@ -257,7 +247,6 @@ export default function Support() {
                     onSave={(a) => save.mutate(a)}
                 />
             )}
-
             {docsFor && (
                 <AnnouncementDocumentsModal
                     announcement={docsFor}
@@ -291,45 +280,37 @@ function AnnouncementModal({ initial, onClose, onSave }) {
                     onSave({ ...form, deadline: form.deadline || null });
                 }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-xl shadow-xl w-full max-w-2xl mt-10"
+                className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mt-10 overflow-hidden"
             >
-                <div className="px-5 py-3 border-b flex justify-between items-center">
-                    <h3 className="font-semibold">
+                <div className="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800">
                         {initial ? "Edit Item" : "Add Student Support Item"}
                     </h3>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="text-slate-500 hover:text-slate-900 text-xl leading-none"
+                        className="text-slate-400 hover:text-slate-900 text-xl leading-none px-2"
                     >
                         ✕
                     </button>
                 </div>
-
                 <div className="p-5 space-y-4">
-                    <div>
-                        <label className="block text-xs font-semibold mb-1">
-                            Title *
-                        </label>
+                    <F label="Title *">
                         <input
-                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
                             required
                             value={form.title}
                             onChange={(e) => set("title", e.target.value)}
+                            className="inp"
                         />
-                    </div>
-
+                    </F>
                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold mb-1">
-                                Category *
-                            </label>
+                        <F label="Category *">
                             <select
-                                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
                                 value={form.category}
                                 onChange={(e) =>
                                     set("category", e.target.value)
                                 }
+                                className="inp"
                             >
                                 <option value="announcement">
                                     Announcement
@@ -342,61 +323,64 @@ function AnnouncementModal({ initial, onClose, onSave }) {
                                     Renewal Information
                                 </option>
                             </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold mb-1">
-                                Deadline
-                            </label>
+                        </F>
+                        <F label="Deadline">
                             <input
                                 type="date"
-                                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
                                 value={form.deadline ?? ""}
                                 onChange={(e) =>
                                     set("deadline", e.target.value)
                                 }
+                                className="inp"
                             />
-                        </div>
+                        </F>
                     </div>
-
-                    <div>
-                        <label className="block text-xs font-semibold mb-1">
-                            Content *
-                        </label>
+                    <F label="Content *">
                         <textarea
                             rows={5}
-                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
                             required
                             value={form.body}
                             onChange={(e) => set("body", e.target.value)}
+                            className="inp"
                         />
-                    </div>
-
+                    </F>
                     <label className="flex items-center gap-2 text-sm">
                         <input
                             type="checkbox"
                             checked={!!form.published}
                             onChange={(e) => set("published", e.target.checked)}
-                        />
+                        />{" "}
                         Published to students
                     </label>
                 </div>
-
-                <div className="px-5 py-3 border-t flex justify-end gap-2 bg-slate-50 rounded-b-xl">
+                <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 bg-slate-50">
                     <button
                         type="button"
                         onClick={onClose}
-                        className="border px-4 py-2 rounded-lg text-sm"
+                        className="border border-slate-300 px-4 py-2 rounded-lg text-sm"
                     >
                         Cancel
                     </button>
                     <button
                         type="submit"
-                        className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-sm font-semibold"
+                        className="bg-purple-700 hover:bg-purple-800 text-white px-4 py-2 rounded-lg text-sm font-bold"
                     >
                         Save
                     </button>
                 </div>
+                <style>{`.inp{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:14px;outline:none}.inp:focus{border-color:#7c3aed;box-shadow:0 0 0 3px rgba(124,58,237,.15)}`}</style>
             </form>
+        </div>
+    );
+}
+
+function F({ label, children }) {
+    return (
+        <div>
+            <label className="block text-[11px] uppercase tracking-wider font-bold text-slate-600 mb-1">
+                {label}
+            </label>
+            {children}
         </div>
     );
 }

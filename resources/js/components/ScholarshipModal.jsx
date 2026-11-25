@@ -186,6 +186,20 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                         />
                     </F>
 
+                    <F
+                        label="CNIC / B-Form"
+                        help="13 digits, or B-Form for students under 18"
+                    >
+                        <input
+                            className="inp font-mono"
+                            value={form.cnic ?? ""}
+                            onChange={(e) =>
+                                set("cnic", formatCnic(e.target.value))
+                            }
+                            placeholder="35202-1234567-1"
+                        />
+                    </F>
+
                     <F label="Cheque Status">
                         <select
                             className="inp"
@@ -212,7 +226,7 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                             placeholder="e.g. Signed 12-Nov-2025"
                         />
                     </F>
-                    <F label="CNIC">
+                    {/* <F label="CNIC">
                         <input
                             className="inp font-mono"
                             placeholder="35202-1234567-1"
@@ -221,7 +235,7 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                                 set("cnic", formatCnic(e.target.value))
                             }
                         />
-                    </F>
+                    </F> */}
                     <F label="Scheme" required>
                         <LookupSelect
                             type="scheme"
@@ -230,26 +244,27 @@ export default function ScholarshipModal({ scholarshipId, onClose, onSaved }) {
                             onChange={(v) => set("scheme", v)}
                         />
                     </F>
-                    <F label="Category" required>
-                        <div className="flex gap-2">
-                            {["fresh", "renewal"].map((c) => (
-                                <label
-                                    key={c}
-                                    className={`flex-1 border rounded-lg px-3 py-2 text-sm cursor-pointer flex items-center gap-2 transition-colors ${
-                                        form.category === c
-                                            ? "border-purple-700 bg-purple-50 text-purple-900 font-semibold"
-                                            : "border-slate-300 hover:bg-slate-50"
-                                    }`}
-                                >
-                                    <input
-                                        type="radio"
-                                        checked={form.category === c}
-                                        onChange={() => set("category", c)}
-                                        className="accent-purple-700"
-                                    />
-                                    {c === "fresh" ? "Fresh" : "Renewal"}
-                                </label>
-                            ))}
+                    <F
+                        label="Category"
+                        help="Auto-computed from scholarship history — not editable"
+                    >
+                        <div className="inp bg-slate-50 text-slate-700 flex items-center gap-2">
+                            <span
+                                className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                                    form.category === "fresh"
+                                        ? "bg-blue-100 text-blue-800"
+                                        : "bg-emerald-100 text-emerald-800"
+                                }`}
+                            >
+                                {form.category === "fresh"
+                                    ? "Fresh"
+                                    : "Renewal"}
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                                {form.category === "fresh"
+                                    ? "(first-time student)"
+                                    : "(continuing student)"}
+                            </span>
                         </div>
                     </F>
                     <F label="Academic Year" required>

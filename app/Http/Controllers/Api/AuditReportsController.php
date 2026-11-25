@@ -294,4 +294,139 @@ class AuditReportsController extends Controller
 
         return $year;
     }
+
+    public function distributionFlat(Request $request)
+    {
+        $filterYear = $request->filled('academic_year')
+            ? $this->normalizeYear($request->input('academic_year'))
+            : null;
+
+        $query = Scholarship::with([
+            'installments' => fn ($q) => $q->orderBy('installment_no'),
+            'recoveries',
+        ]);
+        if ($request->filled('scheme')) $query->where('scheme', $request->input('scheme'));
+
+        $scholarships = $query->orderBy('student_name')->get();
+        $rows = []; $sno = 1; $uniqueStudents = 0;
+
+        foreach ($scholarships as $s) {
+            if ($filterYear && $this->normalizeYear($s->academic_year) !== $filterYear) continue;
+            $uniqueStudents++;
+            $recovered = (float) $s->recoveries->sum('recovered_amount');
+            $firstRecovery = $s->recoveries->first();
+
+            foreach ($s->installments->sortBy('installment_no') as $inst) {
+                $isFirst = $inst->installment_no === 1;
+                $rows[] = [
+                    's_no'           => $sno++,
+                    'student_name'   => $s->student_name,
+                    'father_name'    => $s->father_name,
+                    'roll_no'        => $s->student_id,
+                    'cnic'           => $s->cnic,
+                    'scholarship'    => $s->scheme,
+                    'academic_year'  => $s->academic_year,
+                    'installment_no' => $inst->installment_no,
+                    'installment'    => match ($inst->installment_no) {
+                        1 => '1st Installment', 2 => '2nd Installment',
+                        3 => '3rd Installment', default => '4th Installment',
+                    },
+                    'category'       => $isFirst ? 'Fresh' : 'Renewal',
+                    'cheque_no'      => $inst->cheque_no,
+                    'cheque_date'    => $inst->received_date?->format('Y-m-d'),
+                    'gross_amount'   => (float) $inst->amount,
+                    'recovered'      => $isFirst ? $recovered : 0,
+                    'net_retained'   => (float) $inst->amount - ($isFirst ? $recovered : 0),
+                    'recovery_chq'   => $isFirst ? $firstRecovery?->recovery_cheque_no : null,
+                    'recovery_date'  => $isFirst ? $firstRecovery?->recovery_date?->format('Y-m-d') : null,
+                    'cheque_status'  => $s->cheque_status,
+                    'remarks'        => $inst->notes ?? $s->notes,
+                ];
+            }
+        }
+
+        $totalGross = array_sum(array_column($rows, 'gross_amount'));
+        $totalRecovered = array_sum(array_column($rows, 'recovered'));
+        $totalFresh = 0; $totalRenewal = 0;
+        foreach ($rows as $r) {
+            if ($r['category'] === 'Fresh') $totalFresh += $r['gross_amount'];
+            else $totalRenewal += $r['gross_amount'];
+        }
+
+        return response()->json([
+            'rows' => $rows,
+            'kpis' => [
+                'total_cheques'   => count($rows),
+                'unique_students' => $uniqueStudents,
+                'fresh_pkr'       => $totalFresh,
+                'renewal_pkr'     => $totalRenewal,
+                'total_gross'     => $totalGross,
+                'total_recovered' => $totalRecovered,
+                'net_retained'    => $totalGross - $totalRecovered,
+            ],
+        ]);
+    }
+
+    public function executiveSummary(Request $request)
+    {
+        $filterYear = $request->filled('academic_year')
+            ? $this->normalizeYear($request->input('academic_year'))
+            : null;
+
+        $query = Scholarship::with(['installments', 'recoveries']);
+        if ($filterYear) {
+            $query->where('academic_year', $filterYear);
+        }
+
+        $scholarships = $query->get();
+        $flat = []; $uniqueStudents = 0;
+
+        foreach ($scholarships as $s) {
+            $uniqueStudents++;
+            $recovered = (float) $s->recoveries->sum('recovered_amount');
+            foreach ($s->installments as $inst) {
+                $flat[] = [
+                    'scholarship'    => $s->scheme,
+                    'academic_year'  => $s->academic_year,
+                    'installment_no' => $inst->installment_no,
+                    'category'       => $inst->installment_no === 1 ? 'Fresh' : 'Renewal',
+                    'gross'          => (float) $inst->amount,
+                    'recovered'      => $inst->installment_no === 1 ? $recovered : 0,
+                ];
+            }
+        }
+
+        $byProgram = collect($flat)->groupBy('scholarship')->map(fn ($g, $k) => [
+            'program' => $k,
+            'cheques' => $g->count(),
+            'fresh'   => collect($g)->where('category', 'Fresh')->sum('gross'),
+            'renewal' => collect($g)->where('category', 'Renewal')->sum('gross'),
+            'net'     => collect($g)->sum('gross') - collect($g)->sum('recovered'),
+        ])->sortBy('program')->values();
+
+        $byYear = collect($flat)->groupBy('academic_year')->map(fn ($g, $k) => [
+            'year'      => $k,
+            'cheques'   => $g->count(),
+            'inst_1st'  => collect($g)->where('installment_no', 1)->sum('gross'),
+            'inst_2nd'  => collect($g)->where('installment_no', 2)->sum('gross'),
+            'inst_3rd'  => collect($g)->where('installment_no', 3)->sum('gross'),
+            'inst_4th'  => collect($g)->where('installment_no', 4)->sum('gross'),
+            'gross'     => collect($g)->sum('gross'),
+            'recovered' => collect($g)->sum('recovered'),
+            'net'       => collect($g)->sum('gross') - collect($g)->sum('recovered'),
+        ])->sortByDesc('year')->values();
+
+        return response()->json([
+            'by_program'      => $byProgram,
+            'by_year'         => $byYear,
+            'unique_students' => $uniqueStudents,
+            'total_cheques'   => count($flat),
+        ]);
+    }
+
+    private function buildFlatRows(?string $filterYear = null): array
+    {
+        // Same logic as distributionFlat but returns rows array only
+        // (extract from Batch 2 code)
+    }
 }

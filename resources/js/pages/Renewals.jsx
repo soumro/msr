@@ -9,7 +9,8 @@ import StatusBadge from "../components/StatusBadge";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 
-const fmt = (n) => new Intl.NumberFormat("en-PK").format(n);
+const fmt = (n) => new Intl.NumberFormat("en-PK").format(Number(n) || 0);
+
 const STATUS_TONE = {
     due: "border-l-amber-500",
     submitted: "border-l-blue-500",
@@ -17,6 +18,18 @@ const STATUS_TONE = {
     rejected: "border-l-red-600",
     not_due: "border-l-slate-400",
 };
+
+const KPI_DATA = [
+    { key: "due", label: "Awaiting Student", accent: "amber", icon: "⏳" },
+    {
+        key: "submitted",
+        label: "Awaiting Committee",
+        accent: "blue",
+        icon: "📨",
+    },
+    { key: "approved", label: "Approved", accent: "emerald", icon: "✓" },
+    { key: "rejected", label: "Rejected", accent: "rose", icon: "✕" },
+];
 
 export default function Renewals() {
     const toast = useToast();
@@ -37,7 +50,7 @@ export default function Renewals() {
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["renewals"] });
             qc.invalidateQueries({ queryKey: ["dashboard"] });
-            toast.success("Renewal status updated");
+            toast.success("Renewal updated");
         },
         onError: (e) =>
             toast.error(e?.response?.data?.message ?? "Update failed"),
@@ -56,11 +69,12 @@ export default function Renewals() {
     });
 
     const toggleSelect = (id) =>
-        setSelected((s) => {
-            const n = new Set(s);
+        setSelected((prev) => {
+            const n = new Set(prev);
             n.has(id) ? n.delete(id) : n.add(id);
             return n;
         });
+
     const toggleAll = () => {
         if (!data?.data) return;
         if (selected.size === data.data.length) setSelected(new Set());
@@ -96,103 +110,128 @@ export default function Renewals() {
         approved: 0,
         rejected: 0,
     };
+    const allSelected =
+        (data?.data?.length ?? 0) > 0 && selected.size === data.data.length;
 
     return (
         <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                {[
-                    {
-                        key: "due",
-                        label: "Awaiting Student",
-                        accent: "border-l-amber-500",
-                    },
-                    {
-                        key: "submitted",
-                        label: "Awaiting Committee",
-                        accent: "border-l-blue-500",
-                    },
-                    {
-                        key: "approved",
-                        label: "Approved",
-                        accent: "border-l-emerald-600",
-                    },
-                    {
-                        key: "rejected",
-                        label: "Rejected",
-                        accent: "border-l-red-600",
-                    },
-                ].map((k) => (
-                    <div
-                        key={k.key}
-                        className={`bg-white rounded-xl border border-slate-200 shadow-sm p-4 border-l-4 ${k.accent} cursor-pointer hover:bg-slate-50/50`}
-                        onClick={() =>
-                            setStatusFilter(statusFilter === k.key ? "" : k.key)
-                        }
-                    >
-                        <p className="text-[11px] uppercase tracking-wide text-slate-500 font-bold">
-                            {k.label}
-                        </p>
-                        <p className="text-2xl font-bold mt-1">
-                            {counts[k.key]}
-                        </p>
-                        {statusFilter === k.key && (
-                            <p className="text-[11px] text-emerald-700 mt-1 font-semibold">
-                                Filtered →
-                            </p>
-                        )}
-                    </div>
-                ))}
+            <div>
+                <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                    Renewal Workflow
+                </h1>
+                <p className="text-sm text-slate-500 mt-1">
+                    Review, approve, or reject student renewal applications
+                </p>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-                <div className="px-5 py-4 border-b flex flex-wrap items-center gap-2">
-                    <h2 className="font-semibold mr-2">Renewal Workflow</h2>
-                    <span className="text-xs text-slate-500">
-                        {data?.data.length ?? 0} record
-                        {data?.data.length === 1 ? "" : "s"}
+            {/* KPI strip */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {KPI_DATA.map((k) => {
+                    const accent = k.accent;
+                    const toneMap = {
+                        amber: {
+                            bg: "from-amber-50 to-white",
+                            border: "border-amber-200",
+                            text: "text-amber-900",
+                        },
+                        blue: {
+                            bg: "from-blue-50 to-white",
+                            border: "border-blue-200",
+                            text: "text-blue-900",
+                        },
+                        emerald: {
+                            bg: "from-emerald-50 to-white",
+                            border: "border-emerald-200",
+                            text: "text-emerald-900",
+                        },
+                        rose: {
+                            bg: "from-rose-50 to-white",
+                            border: "border-rose-200",
+                            text: "text-rose-900",
+                        },
+                    };
+                    const t = toneMap[accent];
+                    const active = statusFilter === k.key;
+                    return (
+                        <button
+                            key={k.key}
+                            onClick={() => setStatusFilter(active ? "" : k.key)}
+                            className={`bg-gradient-to-br ${t.bg} border ${t.border} rounded-xl p-4 text-left hover:shadow-md transition-all ${active ? "ring-2 ring-purple-500" : ""}`}
+                        >
+                            <div className="flex items-center justify-between mb-1">
+                                <span className="text-xl">{k.icon}</span>
+                                <p
+                                    className={`text-2xl font-extrabold ${t.text} tabular-nums`}
+                                >
+                                    {counts[k.key] ?? 0}
+                                </p>
+                            </div>
+                            <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">
+                                {k.label}
+                            </p>
+                            {active && (
+                                <p className="text-[10px] text-purple-700 font-bold mt-1">
+                                    Filtered →
+                                </p>
+                            )}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* Bulk actions */}
+            {selected.size > 0 && (
+                <div className="bg-gradient-to-r from-purple-700 to-purple-600 text-white rounded-xl shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
+                    <span className="w-6 h-6 rounded-full bg-white/20 grid place-items-center text-xs font-extrabold">
+                        {selected.size}
                     </span>
-                    <div className="flex-1" />
-                    {selected.size > 0 && (
-                        <>
-                            <span className="text-xs text-slate-500">
-                                {selected.size} selected
-                            </span>
-                            <button
-                                onClick={() => doBulk("submitted")}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
-                            >
-                                Mark Submitted
-                            </button>
-                            <button
-                                onClick={() => doBulk("approved")}
-                                className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
-                            >
-                                Approve
-                            </button>
-                            <button
-                                onClick={() => doBulk("rejected")}
-                                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
-                            >
-                                Reject
-                            </button>
-                        </>
-                    )}
+                    <span className="text-sm font-bold">
+                        {selected.size === 1 ? "record" : "records"} selected
+                    </span>
+                    <div className="flex-1"></div>
+                    <button
+                        onClick={() => doBulk("submitted")}
+                        className="bg-white/15 hover:bg-white/25 border border-white/30 text-white rounded-lg px-3 py-1.5 text-xs font-bold"
+                    >
+                        Mark Submitted
+                    </button>
+                    <button
+                        onClick={() => doBulk("approved")}
+                        className="bg-white/15 hover:bg-white/25 border border-white/30 text-white rounded-lg px-3 py-1.5 text-xs font-bold"
+                    >
+                        Approve
+                    </button>
+                    <button
+                        onClick={() => doBulk("rejected")}
+                        className="bg-rose-500 hover:bg-rose-600 text-white rounded-lg px-3 py-1.5 text-xs font-bold"
+                    >
+                        Reject
+                    </button>
+                    <button
+                        onClick={() => setSelected(new Set())}
+                        className="text-xs text-white/70 hover:text-white underline"
+                    >
+                        Cancel
+                    </button>
                 </div>
-                <div className="px-5 py-3 border-b flex flex-wrap gap-2 bg-slate-50">
+            )}
+
+            {/* Filters + Table */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b border-slate-100">
                     <input
-                        className="border border-slate-300 rounded-lg px-3 py-2 text-sm flex-1 min-w-[240px]"
+                        type="search"
                         placeholder="Search student, CNIC, scheme, donor…"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
+                        className="flex-1 min-w-[220px] border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-600/15"
                     />
                     <select
-                        className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
+                        className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
                     >
-                        <option value="">
-                            Awaiting action (due + submitted)
-                        </option>
+                        <option value="">All statuses</option>
                         <option value="due">Due only</option>
                         <option value="submitted">Submitted only</option>
                         <option value="approved">Approved</option>
@@ -200,157 +239,160 @@ export default function Renewals() {
                         <option value="not_due">Not due</option>
                     </select>
                 </div>
-                <div className="overflow-auto">
-                    <table className="w-full text-sm">
-                        <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wide">
-                            <tr>
-                                <th className="px-3 py-2 w-8">
-                                    <input
-                                        type="checkbox"
-                                        checked={
-                                            data?.data.length > 0 &&
-                                            selected.size === data.data.length
-                                        }
-                                        onChange={toggleAll}
-                                    />
-                                </th>
-                                {[
-                                    "Student ID",
-                                    "Student",
-                                    "CNIC",
-                                    "Scheme",
-                                    "Year",
-                                    "Donor",
-                                    "Approved",
-                                    "Status",
-                                    "Actions",
-                                ].map((h) => (
-                                    <th
-                                        key={h}
-                                        className="text-left px-4 py-2 whitespace-nowrap"
-                                    >
-                                        {h}
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {isLoading && (
+
+                {isLoading ? (
+                    <div className="p-8 text-center text-sm text-slate-500">
+                        Loading…
+                    </div>
+                ) : !data?.data?.length ? (
+                    <div className="py-16 text-center">
+                        <div className="w-16 h-16 mx-auto rounded-full bg-slate-50 grid place-items-center text-3xl mb-4">
+                            ✓
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-800">
+                            No renewals match filters
+                        </h3>
+                        <p className="text-sm text-slate-500 mt-1">
+                            All caught up — or try clearing the filters.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="overflow-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase tracking-wider">
                                 <tr>
-                                    <td
-                                        colSpan={10}
-                                        className="p-6 text-center text-slate-500"
-                                    >
-                                        Loading…
-                                    </td>
-                                </tr>
-                            )}
-                            {!isLoading && data?.data.length === 0 && (
-                                <tr>
-                                    <td
-                                        colSpan={10}
-                                        className="p-6 text-center text-slate-500"
-                                    >
-                                        No renewals match the filters.
-                                    </td>
-                                </tr>
-                            )}
-                            {data?.data.map((r) => (
-                                <tr
-                                    key={r.id}
-                                    className={`border-t border-l-4 ${STATUS_TONE[r.renewal_status]}`}
-                                >
-                                    <td className="px-3 py-2">
+                                    <th className="px-3 py-2.5 w-10">
                                         <input
                                             type="checkbox"
-                                            checked={selected.has(r.id)}
-                                            onChange={() => toggleSelect(r.id)}
+                                            checked={allSelected}
+                                            onChange={toggleAll}
+                                            className="w-4 h-4 rounded border-slate-300 text-purple-600"
                                         />
-                                    </td>
-                                    <td className="px-4 py-2 font-mono">
-                                        {r.student_id}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                        {r.student_name}
-                                    </td>
-                                    <td className="px-4 py-2 font-mono text-xs">
-                                        {r.cnic ?? "—"}
-                                    </td>
-                                    <td className="px-4 py-2">{r.scheme}</td>
-                                    <td className="px-4 py-2">
-                                        {r.academic_year}
-                                    </td>
-                                    <td className="px-4 py-2">{r.donor}</td>
-                                    <td className="px-4 py-2 text-right tabular-nums">
-                                        {fmt(r.approved_amount)}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                        <StatusBadge
-                                            kind="renewal"
-                                            value={r.renewal_status}
-                                        />
-                                    </td>
-                                    <td className="px-4 py-2">
-                                        <div className="flex gap-1 flex-wrap">
-                                            {r.renewal_status === "due" && (
-                                                <button
-                                                    onClick={() =>
-                                                        advanceOne(
-                                                            r,
-                                                            "submitted",
-                                                        )
-                                                    }
-                                                    className="text-xs font-semibold text-blue-700 hover:underline"
-                                                >
-                                                    Mark Submitted
-                                                </button>
-                                            )}
-                                            {r.renewal_status ===
-                                                "submitted" && (
-                                                <>
-                                                    <button
-                                                        onClick={() =>
-                                                            advanceOne(
-                                                                r,
-                                                                "approved",
-                                                            )
-                                                        }
-                                                        className="text-xs font-semibold text-emerald-700 hover:underline"
-                                                    >
-                                                        Approve
-                                                    </button>
-                                                    <button
-                                                        onClick={() =>
-                                                            advanceOne(
-                                                                r,
-                                                                "rejected",
-                                                            )
-                                                        }
-                                                        className="text-xs font-semibold text-red-700 hover:underline"
-                                                    >
-                                                        Reject
-                                                    </button>
-                                                </>
-                                            )}
-                                            {(r.renewal_status === "approved" ||
-                                                r.renewal_status ===
-                                                    "rejected") && (
-                                                <button
-                                                    onClick={() =>
-                                                        advanceOne(r, "due")
-                                                    }
-                                                    className="text-xs font-semibold text-slate-600 hover:underline"
-                                                >
-                                                    Reopen
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
+                                    </th>
+                                    {[
+                                        "Student",
+                                        "Roll",
+                                        "Scheme",
+                                        "Year",
+                                        "Donor",
+                                        "Approved",
+                                        "Status",
+                                        "Actions",
+                                    ].map((h) => (
+                                        <th
+                                            key={h}
+                                            className="text-left px-4 py-2.5"
+                                        >
+                                            {h}
+                                        </th>
+                                    ))}
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                            </thead>
+                            <tbody>
+                                {data.data.map((r) => (
+                                    <tr
+                                        key={r.id}
+                                        className={`border-t border-slate-100 border-l-4 ${STATUS_TONE[r.renewal_status]} hover:bg-slate-50/70`}
+                                    >
+                                        <td className="px-3 py-2.5">
+                                            <input
+                                                type="checkbox"
+                                                checked={selected.has(r.id)}
+                                                onChange={() =>
+                                                    toggleSelect(r.id)
+                                                }
+                                                className="w-4 h-4 rounded border-slate-300 text-purple-600"
+                                            />
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            <div className="font-semibold text-slate-800">
+                                                {r.student_name}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-2.5 font-mono text-xs text-slate-600">
+                                            {r.student_id}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-xs">
+                                            {r.scheme}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-xs text-slate-600">
+                                            {r.academic_year}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-xs text-slate-600">
+                                            {r.donor}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold">
+                                            {fmt(r.approved_amount)}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            <StatusBadge
+                                                kind="renewal"
+                                                value={r.renewal_status}
+                                            />
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            <div className="flex gap-1 flex-wrap">
+                                                {r.renewal_status === "due" && (
+                                                    <button
+                                                        onClick={() =>
+                                                            advanceOne(
+                                                                r,
+                                                                "submitted",
+                                                            )
+                                                        }
+                                                        className="text-xs font-bold text-blue-700 hover:bg-blue-50 px-2 py-1 rounded"
+                                                    >
+                                                        Submit
+                                                    </button>
+                                                )}
+                                                {r.renewal_status ===
+                                                    "submitted" && (
+                                                    <>
+                                                        <button
+                                                            onClick={() =>
+                                                                advanceOne(
+                                                                    r,
+                                                                    "approved",
+                                                                )
+                                                            }
+                                                            className="text-xs font-bold text-emerald-700 hover:bg-emerald-50 px-2 py-1 rounded"
+                                                        >
+                                                            Approve
+                                                        </button>
+                                                        <button
+                                                            onClick={() =>
+                                                                advanceOne(
+                                                                    r,
+                                                                    "rejected",
+                                                                )
+                                                            }
+                                                            className="text-xs font-bold text-rose-700 hover:bg-rose-50 px-2 py-1 rounded"
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                    </>
+                                                )}
+                                                {(r.renewal_status ===
+                                                    "approved" ||
+                                                    r.renewal_status ===
+                                                        "rejected") && (
+                                                    <button
+                                                        onClick={() =>
+                                                            advanceOne(r, "due")
+                                                        }
+                                                        className="text-xs font-bold text-slate-600 hover:bg-slate-100 px-2 py-1 rounded"
+                                                    >
+                                                        Reopen
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         </div>
     );

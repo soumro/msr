@@ -251,66 +251,90 @@ function RestoreCard() {
     };
 
     return (
-        <Card
-            title="Restore from Backup"
-            subtitle="Upload a .json backup previously created by this app."
-        >
-            <form onSubmit={submit} className="space-y-3">
-                <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Backup file (.json)
-                    </label>
-                    <input
-                        type="file"
-                        accept=".json,application/json"
-                        onChange={(e) => setFile(e.target.files[0] || null)}
-                        className="w-full text-xs file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-purple-700 file:text-white file:text-xs file:font-semibold hover:file:bg-purple-800"
-                    />
-                </div>
+        // Replace the existing top of each page's return statement with:
+        <div className="space-y-4">
+            <div>
+                <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                    Restore from Backup
+                </h1>
+                <p className="text-sm text-slate-500 mt-1">
+                    Upload a <strong>.json</strong> backup previously created by
+                    this app. You can choose to wipe existing data first, or
+                    merge the backup with current data.
+                </p>
+            </div>
 
-                <div className="space-y-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    <label className="flex items-start gap-2 text-xs text-amber-900 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={wipeCurrent}
-                            onChange={(e) => setWipeCurrent(e.target.checked)}
-                            className="mt-0.5 accent-amber-600"
-                        />
-                        <span>
-                            <strong>Wipe existing data first</strong> —
-                            recommended for full restore. Uncheck to merge (rows
-                            are inserted alongside current data — potential
-                            duplicates).
-                        </span>
-                    </label>
+            {/* existing content wrapped in: */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                {/* content */}
+                <Card
+                    title="Restore from Backup"
+                    subtitle="Upload a .json backup previously created by this app."
+                >
+                    <form onSubmit={submit} className="space-y-3">
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                Backup file (.json)
+                            </label>
+                            <input
+                                type="file"
+                                accept=".json,application/json"
+                                onChange={(e) =>
+                                    setFile(e.target.files[0] || null)
+                                }
+                                className="w-full text-xs file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-purple-700 file:text-white file:text-xs file:font-semibold hover:file:bg-purple-800"
+                            />
+                        </div>
 
-                    <label className="flex items-start gap-2 text-xs text-amber-900 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={restoreUsers}
-                            onChange={(e) => setRestoreUsers(e.target.checked)}
-                            className="mt-0.5 accent-amber-600"
-                        />
-                        <span>
-                            <strong>Restore users too</strong> — leave off to
-                            keep your current login credentials. Only turn on if
-                            you want the exact users from the backup (and know
-                            their passwords).
-                        </span>
-                    </label>
-                </div>
+                        <div className="space-y-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            <label className="flex items-start gap-2 text-xs text-amber-900 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={wipeCurrent}
+                                    onChange={(e) =>
+                                        setWipeCurrent(e.target.checked)
+                                    }
+                                    className="mt-0.5 accent-amber-600"
+                                />
+                                <span>
+                                    <strong>Wipe existing data first</strong> —
+                                    recommended for full restore. Uncheck to
+                                    merge (rows are inserted alongside current
+                                    data — potential duplicates).
+                                </span>
+                            </label>
 
-                <div className="flex justify-end">
-                    <button
-                        type="submit"
-                        disabled={!file || busy}
-                        className="bg-purple-700 hover:bg-purple-800 text-white px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-60"
-                    >
-                        {busy ? "Restoring…" : "Restore Backup"}
-                    </button>
-                </div>
-            </form>
-        </Card>
+                            <label className="flex items-start gap-2 text-xs text-amber-900 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={restoreUsers}
+                                    onChange={(e) =>
+                                        setRestoreUsers(e.target.checked)
+                                    }
+                                    className="mt-0.5 accent-amber-600"
+                                />
+                                <span>
+                                    <strong>Restore users too</strong> — leave
+                                    off to keep your current login credentials.
+                                    Only turn on if you want the exact users
+                                    from the backup (and know their passwords).
+                                </span>
+                            </label>
+                        </div>
+
+                        <div className="flex justify-end">
+                            <button
+                                type="submit"
+                                disabled={!file || busy}
+                                className="bg-purple-700 hover:bg-purple-800 text-white px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-60"
+                            >
+                                {busy ? "Restoring…" : "Restore Backup"}
+                            </button>
+                        </div>
+                    </form>
+                </Card>
+            </div>
+        </div>
     );
 }
 

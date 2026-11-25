@@ -43,6 +43,8 @@ class InstallmentController extends Controller
         if (empty($data['received_date'])) $data['received_date'] = null;
 
         $installment = $scholarship->installments()->create($data);
+        $hasFirst = $scholarship->installments()->where('installment_no', 1)->exists();
+        $scholarship->update(['category' => $hasFirst ? 'fresh' : 'renewal']);
         $scholarship->syncPaymentStatus();
 
         return response()->json($installment, 201);
@@ -70,6 +72,8 @@ class InstallmentController extends Controller
         }
 
         $installment->update($data);
+        $hasFirst = $scholarship->installments()->where('installment_no', 1)->exists();
+        $scholarship->update(['category' => $hasFirst ? 'fresh' : 'renewal']);
         $scholarship->syncPaymentStatus();
 
         return response()->json($installment);
@@ -130,7 +134,12 @@ class InstallmentController extends Controller
                 ]);
             }
 
+            // ✅ Category computed AFTER all installments exist
+            $hasFirst = $scholarship->installments()->where('installment_no', 1)->exists();
+            $scholarship->category = $hasFirst ? 'fresh' : 'renewal';
+
             $scholarship->syncPaymentStatus();
+
         });
     } catch (\Throwable $e) {
         \Log::error('replaceAll failed: ' . $e->getMessage(), [
